@@ -1,0 +1,60 @@
+{
+  "note": "Synthetic JIRA-shaped data for sprint delivery regression tests.",
+  "tz": "UTC",
+  "pointsField": "customfield_10016",
+  "targetSprintId": 102,
+  "categories": { "1": "new", "3": "done" },
+  "sprints": [
+    { "id": 101, "name": "Demo Sprint 1", "state": "closed", "originBoardId": 1,
+      "startDate": "2026-09-01T09:00:00.000Z", "endDate": "2026-09-14T17:00:00.000Z", "completeDate": "2026-09-14T17:00:00.000Z" },
+    { "id": 102, "name": "Demo Sprint 2", "state": "closed", "originBoardId": 1,
+      "startDate": "2026-09-15T09:00:00.000Z", "endDate": "2026-09-28T17:00:00.000Z", "completeDate": "2026-09-28T17:00:00.000Z" }
+  ],
+  "issues": [
+    {
+      "key": "DEMO-1",
+      "fields": {
+        "summary": "Finish a sample task", "status": { "id": "3", "name": "Done", "statusCategory": { "key": "done" } },
+        "assignee": { "accountId": "sample-1", "displayName": "Alex", "emailAddress": "alex@example.test" },
+        "issuetype": { "name": "Task" }, "created": "2026-09-16T10:00:00.000Z", "updated": "2026-09-20T10:00:00.000Z",
+        "sprint": null, "closedSprints": [{ "id": 102, "name": "Demo Sprint 2", "state": "closed" }], "customfield_10016": 3
+      },
+      "changelog": { "histories": [
+        { "id": "1", "created": "2026-09-20T10:00:00.000Z", "items": [
+          { "field": "status", "fieldtype": "jira", "from": "1", "fromString": "To Do", "to": "3", "toString": "Done" }
+        ] }
+      ] }
+    },
+    {
+      "key": "DEMO-2",
+      "fields": {
+        "summary": "Continue a sample task", "status": { "id": "1", "name": "To Do", "statusCategory": { "key": "new" } },
+        "assignee": { "accountId": "sample-2", "displayName": "Taylor", "emailAddress": "taylor@example.test" },
+        "issuetype": { "name": "Task" }, "created": "2026-09-16T10:00:00.000Z", "updated": "2026-09-16T10:00:00.000Z",
+        "sprint": null, "closedSprints": [{ "id": 102, "name": "Demo Sprint 2", "state": "closed" }], "customfield_10016": 2
+      },
+      "changelog": { "histories": [] }
+    },
+    {
+      "key": "DEMO-3",
+      "fields": {
+        "summary": "Previously delivered sample", "status": { "id": "3", "name": "Done", "statusCategory": { "key": "done" } },
+        "assignee": { "accountId": "sample-1", "displayName": "Alex", "emailAddress": "alex@example.test" },
+        "issuetype": { "name": "Task" }, "created": "2026-09-02T10:00:00.000Z", "updated": "2026-09-14T17:00:00.000Z",
+        "sprint": null, "closedSprints": [
+          { "id": 101, "name": "Demo Sprint 1", "state": "closed" },
+          { "id": 102, "name": "Demo Sprint 2", "state": "closed" }
+        ], "customfield_10016": 1
+      },
+      "changelog": { "histories": [
+        { "id": "1", "created": "2026-09-10T10:00:00.000Z", "items": [
+          { "field": "status", "fieldtype": "jira", "from": "1", "fromString": "To Do", "to": "3", "toString": "Done" }
+        ] },
+        { "id": "2", "created": "2026-09-14T17:00:00.000Z", "items": [
+          { "field": "Sprint", "fieldtype": "custom", "from": "101", "fromString": "", "to": "101, 102", "toString": "" }
+        ] }
+      ] }
+    }
+  ],
+  "expected": { "DEMO-1": "done", "DEMO-2": "carryover", "DEMO-3": "excluded" }
+}

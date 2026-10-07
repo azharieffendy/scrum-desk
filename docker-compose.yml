@@ -1,0 +1,19 @@
+services:
+  daily-scrum:
+    build: .
+    container_name: daily-scrum
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./data:/app/data          # SQLite database lives here — back up this folder
+    environment:
+      - TZ=Asia/Jakarta           # log timestamps; "today" for JIRA refreshes follows the admin browser's timezone
+      # - SETUP_CODE=choose-one   # optional fixed first-run code (default: random, printed in the log)
+      # - COOKIE_SECURE=true      # set when the app is served over HTTPS
+      # - TRUST_PROXY=1           # set when behind a reverse proxy
+      # Optional: keep JIRA credentials server-side instead of in the app's Settings.
+      # Add them below, then: docker compose up -d --force-recreate
+      # - JIRA_SITE=yourteam.atlassian.net
+      # - JIRA_EMAIL=you@company.com
+      # - JIRA_API_TOKEN=your-api-token
+    restart: no

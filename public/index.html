@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#292f3d">
+<title>Daily Scrum</title>
+<meta name="description" content="Daily standup board with attendance, notes and JIRA Cloud sprint sync">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Maven+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="theme.js"></script>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="brand">
+      <svg viewBox="0 0 64 64" width="34" height="34" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#168edf"/>
+        <path d="M14 22c0-5 3-8 8-8h20c5 0 8 3 8 8v12c0 5-3 8-8 8H30l-8 7v-7h-.5c-4.5 0-7.5-3-7.5-8z" fill="#fff" opacity=".18"/>
+        <path d="M25 28l5 5 10-10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="brand-text"><strong>Daily Scrum</strong><span>morning board</span></div>
+    </div>
+    <nav class="tabs" id="tabs" aria-label="Views">
+      <button class="tab" data-action="view" data-view="today">Today</button>
+      <button class="tab" data-action="view" data-view="sprint">Sprint</button>
+      <button class="tab" data-action="view" data-view="history">History</button>
+      <button class="tab" data-action="view" data-view="report" data-reports>Reports</button>
+    </nav>
+    <button class="sprint-chip" id="sprintChip" data-action="view" data-view="sprint" hidden></button>
+    <span class="save-hint" id="saveHint" role="status" aria-live="polite">All changes saved</span>
+    <details class="nav-dropdown account-menu">
+      <summary class="tab">Account</summary>
+      <div class="dropdown-panel">
+        <span class="account-name" id="accountName"></span>
+        <button class="tab" data-action="view" data-view="settings">Settings</button>
+        <button class="tab" data-action="view" data-view="settings" data-tab="account">Your account</button>
+        <button class="theme-toggle" data-action="theme" type="button" aria-label="Switch to dark theme">☾ Dark</button>
+        <button class="logout-btn" id="logoutBtn" data-action="logout" type="button" hidden>Sign out</button>
+      </div>
+    </details>
+  </div>
+</header>
+
+<div class="save-banner" id="saveBanner" role="alert" hidden>
+  <span id="saveBannerText"></span>
+  <button type="button" class="btn btn-sm" data-action="retry-save">Retry now</button>
+</div>
+
+<main id="app"></main>
+
+<footer class="foot">
+  Data lives in the server database
+</footer>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <h3 id="modalTitle">Team member</h3>
+    <form id="memberForm" novalidate>
+      <label class="field"><span>Name *</span>
+        <input name="name" required maxlength="60" placeholder="e.g. Andi Wijaya" autocomplete="off">
+      </label>
+      <label class="field"><span>Role</span>
+        <input name="role" maxlength="40" placeholder="e.g. Backend (optional)" autocomplete="off">
+      </label>
+      <label class="field"><span>JIRA email</span>
+        <input name="email" type="email" maxlength="80" placeholder="used to match sprint tickets (optional)" autocomplete="off">
+      </label>
+      <label class="field" id="memberLeadField" hidden><span>Technical Lead</span>
+        <select name="lead"></select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Save member</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="keyOverlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="keyModalTitle">
+    <h3 id="keyModalTitle">Your JIRA API key</h3>
+    <p class="panel-sub">Admins and Technical Leads call JIRA with their own key. Add your Atlassian email and an API token &mdash;
+      the token is stored on the server and never shown again.</p>
+    <form id="ownKeyModalForm" novalidate>
+      <div id="ownKeyModalFields"></div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-danger-ghost own-key-signout" data-action="logout">Sign out</button>
+        <button type="button" class="btn btn-ghost" data-action="own-key-later">Later</button>
+        <button type="submit" class="btn btn-primary">Save my key</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="overlay" id="confirmOverlay" hidden>
+  <div class="modal modal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
+    <h3 id="confirmTitle"></h3>
+    <p class="confirm-message" id="confirmMessage"></p>
+    <form id="confirmForm" novalidate>
+      <div id="confirmFields"></div>
+      <p class="confirm-error" id="confirmError" role="alert"></p>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost" id="confirmCancel" data-action="confirm-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="confirmOk">OK</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="xlsx.js"></script>
+<script src="monthly-report.js"></script>
+<script src="kpi-report.js"></script>
+<script src="pi-periods.js"></script>
+<script src="password-policy.js"></script>
+<script src="pi-report.js"></script>
+<script src="status-colors.js"></script>
+<script src="live-sync.js"></script>
+<script src="own-key.js"></script>
+<script src="dialogs.js"></script>
+<script src="tooltips.js"></script>
+<script src="setup-checklist.js"></script>
+<script src="app-core.js"></script>
+<script src="app-auth.js"></script>
+<script src="app-views.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

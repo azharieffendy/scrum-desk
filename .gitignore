@@ -1,0 +1,17 @@
+node_modules/
+.vercel/
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.log
+.DS_Store
