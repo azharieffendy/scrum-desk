@@ -40,7 +40,7 @@ function entryHasContent(e) {
     ['yesterday', 'today', 'blockers'].some((k) => String(e[k] || '').trim())));
 }
 
-/* A day counts only when the daily scrum was started for it — days never
+/* A day counts only when the standup was started for it — days never
  * started (holidays, weekends) had no standup, even with a JIRA snapshot.
  * Data from before the start button (no startedAt key) counts if it has notes. */
 function isRecordedDay(day) {
@@ -276,7 +276,7 @@ function viewReport() {
 
   return toolbar + (r.recordedDays ? attendanceGridHtml(r) : `
   <section class="panel empty-inline">
-    <p>Nothing recorded in ${esc(r.label)} yet. Days appear here once a daily scrum is started on the Today board.</p>
+    <p>Nothing recorded in ${esc(r.label)} yet. Days appear here once a standup is started on the Today board.</p>
   </section>`);
 }
 

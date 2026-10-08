@@ -1,4 +1,4 @@
-/* Daily Scrum — sign-in/setup/users, member helpers, JIRA matching and the API client.
+/* Scrum Desk — sign-in/setup/users, member helpers, JIRA matching and the API client.
  * Classic script: shares globals with app-core.js, app-auth.js,
  * app-views.js and app.js (see index.html for the load order). */
 'use strict';

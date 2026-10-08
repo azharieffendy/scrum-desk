@@ -10,7 +10,7 @@
    standups: it continues while the next standup has the same
    blockerSince or the same text (case and spaces ignored), skips days
    the member was away, and ends on the first standup without it.
-   Ages count standup days (days a daily scrum was started).
+   Ages count standup days (days a standup was started).
 
    Everything above the browser view is pure (unit-tested in Node);
    the view uses the app's globals (state, ui, esc, toast, ...).
@@ -27,7 +27,7 @@ function noteHasContent(e) {
   return Boolean(e && (e.attendance || ['yesterday', 'today', 'blockers'].some((k) => String(e[k] || '').trim())));
 }
 
-/** A day counts once its daily scrum was started; older data without the start button counts if it has notes. */
+/** A day counts once its standup was started; older data without the start button counts if it has notes. */
 function isStandupDay(day) {
   if (!day) return false;
   if (day.startedAt !== undefined) return Boolean(day.startedAt);

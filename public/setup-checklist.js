@@ -8,7 +8,7 @@
    ================================================================ */
 'use strict';
 
-const LS_SETUP_HIDDEN = 'dailyscrum.setup-hidden.v1';
+const LS_SETUP_HIDDEN = 'scrumdesk.setup-hidden.v1';
 const SETUP_DEFAULT_PREFIX = 'TEAM';
 
 const setupUi = { collapsed: false };
@@ -35,7 +35,7 @@ function setupSteps() {
   const settings = state.settings || {};
   const steps = [
     { id: 'members', title: 'Add your team members', tab: 'team', link: 'Team',
-      detail: 'Everyone who joins the daily scrum, with their role.',
+      detail: 'Everyone who joins the standup, with their role.',
       done: members.length > 0 },
     { id: 'emails', title: 'Give every member their JIRA email',
       tab: 'team', link: 'Team',

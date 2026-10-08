@@ -21,7 +21,7 @@ OUTPUT = ROOT / "docs" / "screenshots"
 OUTPUT.mkdir(parents=True, exist_ok=True)
 
 SEED = r"""() => {
-  localStorage.setItem('dailyscrum.setup-hidden.v1', '1');
+  localStorage.setItem('scrumdesk.setup-hidden.v1', '1');
   const today = todayISO();
   const month = shiftMonth(today.slice(0, 7), -1);
   window.demoMonth = month;
@@ -235,7 +235,7 @@ def main():
             reduced_motion="reduce",
             timezone_id="Asia/Jakarta",
         )
-        context.add_init_script("localStorage.setItem('dailyscrum.theme.v1', 'light')")
+        context.add_init_script("localStorage.setItem('scrumdesk.theme.v1', 'light')")
         page = context.new_page()
         page.on("pageerror", lambda error: errors.append(str(error)))
 

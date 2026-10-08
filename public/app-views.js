@@ -1,4 +1,4 @@
-/* Daily Scrum — standup notes, view templates, render, modal and toasts.
+/* Scrum Desk — standup notes, view templates, render, modal and toasts.
  * Classic script: shares globals with app-core.js, app-auth.js,
  * app-views.js and app.js (see index.html for the load order). */
 'use strict';
@@ -74,7 +74,7 @@ async function copyText(text) {
 }
 
 async function copyNotes(dateISO) {
-  if (!isStarted(state.days[dateISO || ui.date])) { toast('No daily scrum on this day'); return; }
+  if (!isStarted(state.days[dateISO || ui.date])) { toast('No standup on this day'); return; }
   const text = buildNotes(dateISO || ui.date);
   if (!text) { toast('Nothing to copy yet — add some notes first'); return; }
   const ok = await copyText(text);
@@ -132,7 +132,7 @@ function dayReportSheets(dateISO) {
 
 function downloadReport(dateISO) {
   const d = dateISO || ui.date;
-  if (!isStarted(state.days[d])) { toast('No daily scrum on this day'); return; }
+  if (!isStarted(state.days[d])) { toast('No standup on this day'); return; }
   try {
     const bytes = XlsxLite.build(dayReportSheets(d));
     const blob = new Blob([bytes], { type: XlsxLite.MIME });
@@ -233,16 +233,16 @@ function notStartedHtml() {
   const weekend = dow === 0 || dow === 6;
   const future = ui.date > todayISO();
   let hint;
-  if (future) hint = 'This day has not happened yet — a daily scrum can be started on the day itself.';
-  else if (canEdit()) hint = 'Start the daily scrum to take attendance and write notes. Days that are never started (holidays, weekends) are left out of reports.';
-  else hint = 'An admin has not started the daily scrum for this day.';
+  if (future) hint = 'This day has not happened yet — a standup can be started on the day itself.';
+  else if (canEdit()) hint = 'Start the standup to take attendance and write notes. Days that are never started (holidays, weekends) are left out of reports.';
+  else hint = 'An admin has not started the standup for this day.';
   return `
   <div class="empty-wrap">
     <section class="panel empty">
       <div class="empty-ico">&#9208;</div>
-      <h3>No daily scrum on this day</h3>
+      <h3>No standup on this day</h3>
       <p>${weekend ? 'It is the weekend. ' : ''}${hint}</p>
-      ${canEdit() && !future ? '<button class="btn btn-primary" data-action="start-day">&#9654; Start daily scrum</button>' : ''}
+      ${canEdit() && !future ? '<button class="btn btn-primary" data-action="start-day">&#9654; Start standup</button>' : ''}
     </section>
   </div>`;
 }
@@ -250,18 +250,18 @@ function notStartedHtml() {
 async function startDay() {
   const today = todayISO();
   const date = ui.date;
-  if (date > today) { toast('A daily scrum can only be started on the day itself', 'error'); return; }
+  if (date > today) { toast('A standup can only be started on the day itself', 'error'); return; }
   if (date < today && !await askConfirm({
     title: 'Start a past day?',
-    message: 'Start a daily scrum for ' + fmtDay(date) + '? The current team is used as the roster of that day.',
-    confirmLabel: 'Start daily scrum',
+    message: 'Start a standup for ' + fmtDay(date) + '? The current team is used as the roster of that day.',
+    confirmLabel: 'Start standup',
   })) return;
   const day = getDay(date, true);
   day.startedAt = new Date().toISOString();
   day.roster = state.members.map(memberSnapshot);
   saveState();
   render();
-  toast('Daily scrum started for ' + fmtDay(date), 'success');
+  toast('Standup started for ' + fmtDay(date), 'success');
 }
 
 /** Cancelling keeps a copy of the day so the Undo toast can put it back. */
@@ -276,7 +276,7 @@ function cancelDay() {
   persistSoon.cancel();
   saveState();
   render();
-  return toastUndo('Daily scrum cancelled for ' + fmtDay(date) + ' — this day counts as no standup', () => restoreCancelledDay(date, saved));
+  return toastUndo('Standup cancelled for ' + fmtDay(date) + ' — this day counts as no standup', () => restoreCancelledDay(date, saved));
 }
 
 function restoreCancelledDay(date, saved) {
@@ -285,7 +285,7 @@ function restoreCancelledDay(date, saved) {
   Object.assign(day, clone(saved));
   saveState();
   render();
-  toast('Daily scrum restored', 'success');
+  toast('Standup restored', 'success');
 }
 
 const AWAY = ['leave', 'sick', 'noshow'];
@@ -810,7 +810,7 @@ function viewHistory() {
       <section class="panel empty">
         <div class="empty-ico">&#128220;</div>
         <h3>No history yet</h3>
-        <p>Every day a daily scrum was started will appear here.</p>
+        <p>Every day a standup was started will appear here.</p>
         <button class="btn btn-primary" data-action="view" data-view="today">Go to today's board</button>
       </section>
     </div>`;
@@ -986,7 +986,7 @@ function usersPanel() {
   return `
   <section class="panel">
     <h3>Users</h3>
-    <p class="panel-sub">Admins can edit everything. Technical Leads write the daily scrum, manage members and sync JIRA for their own team only. Viewers can only view the board and download reports.</p>
+    <p class="panel-sub">Admins can edit everything. Technical Leads write the standup, manage members and sync JIRA for their own team only. Viewers can only view the board and download reports.</p>
     <ul class="member-list">
       ${usersList.map((u) => `
       <li>
@@ -1195,7 +1195,7 @@ function dataPanel() {
     <h3>Data &amp; backup</h3>
     <p class="panel-sub">${storageMode === 'local'
       ? "Everything lives in this browser's localStorage — nothing leaves your machine except JIRA API calls."
-      : 'Everything is stored in the server\'s SQLite database (<code>data/daily-scrum.db</code>), so it survives browser changes and is shared with every signed-in user.'}
+      : 'Everything is stored in the server\'s SQLite database (<code>data/scrum-desk.db</code>), so it survives browser changes and is shared with every signed-in user.'}
       <b>Export team data</b> saves members, notes and history as JSON, to move them elsewhere or keep a copy.
       It leaves out accounts, settings and JIRA credentials${fullBackupAllowed() ? '; to bring back the whole app, use the full encrypted backup below' : ''}.</p>
     <div class="row-gap">

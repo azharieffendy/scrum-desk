@@ -11,8 +11,8 @@ const vm = require('node:vm');
 const sources = ['theme.js', 'monthly-report.js', 'blockers.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-query.js', 'pi-report.js', 'pi-editor.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'full-backup.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
   fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8').replace(/\ninit\(\);\s*$/, '\n'));
 
-function appContext(fetchImpl = async () => { throw new Error('unexpected fetch'); }) {
-  const storage = new Map();
+function appContext(fetchImpl = async () => { throw new Error('unexpected fetch'); }, initialStorage = {}) {
+  const storage = new Map(Object.entries(initialStorage));
   const classList = { add() {}, remove() {}, contains() { return false; } };
   const nodes = {
     '#app': { innerHTML: '', dataset: {} },
@@ -165,12 +165,12 @@ test('failed browser-data migration retains the original local copy', async () =
     }) };
     return { ok: false, status: 413 };
   });
-  storage.set('dailyscrum.state.v1', JSON.stringify({
+  storage.set('scrumdesk.state.v1', JSON.stringify({
     members: [{ id: 'm1', name: 'Member One' }], days: {}, mapping: {}, settings: { jql: '' },
   }));
   await assert.rejects(vm.runInContext('bootStorage()', context), /original copy is still in this browser/);
-  assert.ok(storage.has('dailyscrum.state.v1'));
-  assert.equal(storage.get('dailyscrum.migration-pending.v1'), '1');
+  assert.ok(storage.has('scrumdesk.state.v1'));
+  assert.equal(storage.get('scrumdesk.migration-pending.v1'), '1');
 });
 
 test('a partial migration resumes without replacing server data', async () => {
@@ -185,14 +185,14 @@ test('a partial migration resumes without replacing server data', async () => {
     savedPatch = JSON.parse(options.body).patch;
     return { ok: true, json: async () => ({ version: 2, loadedAt: 'later' }) };
   });
-  storage.set('dailyscrum.state.v1', JSON.stringify({ members: [member],
+  storage.set('scrumdesk.state.v1', JSON.stringify({ members: [member],
     days: { '2026-09-01': existingDay, '2026-09-02': missingDay }, mapping: {}, settings: { jql: '' } }));
-  storage.set('dailyscrum.migration-pending.v1', '1');
+  storage.set('scrumdesk.migration-pending.v1', '1');
   await vm.runInContext('bootStorage()', context);
   assert.equal(savedPatch.days.upsert['2026-09-02'].entries.m1.today, 'remaining');
   assert.equal(savedPatch.days.upsert['2026-09-01'], undefined);
-  assert.equal(storage.has('dailyscrum.state.v1'), false);
-  assert.equal(storage.has('dailyscrum.migration-pending.v1'), false);
+  assert.equal(storage.has('scrumdesk.state.v1'), false);
+  assert.equal(storage.has('scrumdesk.migration-pending.v1'), false);
 });
 
 test('a temporary auth API failure never switches to browser storage', async () => {
@@ -288,8 +288,8 @@ test('theme switch persists a personal choice without changing board state', () 
   assert.equal(vm.runInContext('document.documentElement.dataset.theme', context), 'light');
   vm.runInContext('clickActions.theme()', context);
   assert.equal(vm.runInContext('document.documentElement.dataset.theme', context), 'dark');
-  assert.equal(storage.get('dailyscrum.theme.v1'), 'dark');
-  assert.equal(storage.has('dailyscrum.state.v1'), false);
+  assert.equal(storage.get('scrumdesk.theme.v1'), 'dark');
+  assert.equal(storage.has('scrumdesk.state.v1'), false);
 });
 
 const kpiPayload = {
@@ -710,7 +710,7 @@ test('the sheet view shows one row per person, away members included, and rememb
   assert.match(html, /Fixed &lt;b&gt;login&lt;\/b&gt;/);
   assert.match(html, /<b>3<\/b>\/4 here/);
   assert.match(html, /<button type="button" class="att-trigger" data-action="att-menu" data-id="m3" data-src="sheet"[^>]*><span class="att-pill att-leave">/);
-  assert.equal(storage.get('dailyscrum.boardview.v1'), '"sheet"');
+  assert.equal(storage.get('scrumdesk.boardview.v1'), '"sheet"');
 });
 
 test('the sheet view keeps filters, edits notes in place and is read-only for viewers', () => {
@@ -822,7 +822,7 @@ test('JIRA Settings keeps edits pending until Save and lets an admin discard the
   await vm.runInContext("clickActions['jira-save']()", context);
   assert.equal(vm.runInContext('creds.site', context), 'saved.atlassian.net');
   assert.equal(vm.runInContext('hasUnsavedWork()', context), false);
-  assert.equal(JSON.parse(storage.get('dailyscrum.creds.v1')).site, 'saved.atlassian.net');
+  assert.equal(JSON.parse(storage.get('scrumdesk.creds.v1')).site, 'saved.atlassian.net');
 });
 
 test('the PI tab is for admins in server mode only', async () => {
@@ -1315,7 +1315,7 @@ test('the setup checklist can be hidden in this browser and shown again', () => 
   settingsPage(context, 'admin');
   assert.equal(vm.runInContext('showSetupChecklist()', context), true);
   vm.runInContext('hideSetupChecklist(true)', context);
-  assert.equal(storage.get('dailyscrum.setup-hidden.v1'), '1');
+  assert.equal(storage.get('scrumdesk.setup-hidden.v1'), '1');
   assert.equal(vm.runInContext('showSetupChecklist()', context), false);
   assert.match(vm.runInContext('teamPanel()', context), /data-action="setup-show"/);
   vm.runInContext("clickActions['setup-show']()", context);
@@ -1459,7 +1459,7 @@ test('Sprint board expands done tickets and remembers the List layout', () => {
   assert.match(board(), /class="sb-done"/);
   vm.runInContext("clickActions['sprint-mode']({ dataset: { mode: 'list' } })", context);
   assert.equal(vm.runInContext('ui.sprintMode', context), 'list');
-  assert.equal(storage.get('dailyscrum.sprintMode.v1'), '"list"');
+  assert.equal(storage.get('scrumdesk.sprintMode.v1'), '"list"');
   assert.match(board(), /class="panel sprint-member"/);
 });
 
@@ -1701,4 +1701,18 @@ test('the Blockers report tab lists open blockers with ages and the log, filtere
   assert.doesNotMatch(budi, /Need DB access/);
   assert.match(budi, /Flaky env/);
   assert.equal(vm.runInContext("navigationFromUrl('http://x/?view=blockers').view", context), 'blockers');
+});
+
+test('browser data saved under the old dailyscrum. keys moves to scrumdesk. keys on load', () => {
+  const { context, storage } = appContext(undefined, {
+    'dailyscrum.theme.v1': '"dark"',
+    'dailyscrum.boardview.v1': '"sheet"',
+    'dailyscrum.compact.v1': 'true',
+    'scrumdesk.compact.v1': 'false',
+  });
+  assert.equal(storage.get('scrumdesk.boardview.v1'), '"sheet"');
+  assert.equal(vm.runInContext('ui.boardView', context), 'sheet', 'read after the move');
+  assert.equal(storage.get('scrumdesk.theme.v1'), '"dark"');
+  assert.equal(storage.get('scrumdesk.compact.v1'), 'false', 'a newer value is not overwritten');
+  assert.deepEqual([...storage.keys()].filter((k) => k.startsWith('dailyscrum.')), []);
 });

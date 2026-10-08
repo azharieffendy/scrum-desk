@@ -1,7 +1,21 @@
 /* Personal appearance preference; kept outside shared board data. */
 'use strict';
 
-const THEME_KEY = 'dailyscrum.theme.v1';
+/* Browser data saved before the rename to Scrum Desk used "dailyscrum." keys; move it
+   once, before any script reads its key (this file loads first). */
+const STORAGE_KEYS = ['state.v1', 'creds.v1', 'migration-pending.v1', 'compact.v1', 'boardview.v1', 'sprintMode.v1', 'setup-hidden.v1', 'theme.v1'];
+(function moveLegacyStorage() {
+  for (const name of STORAGE_KEYS) {
+    try {
+      const old = localStorage.getItem('dailyscrum.' + name);
+      if (old === null) continue;
+      if (localStorage.getItem('scrumdesk.' + name) === null) localStorage.setItem('scrumdesk.' + name, old);
+      localStorage.removeItem('dailyscrum.' + name);
+    } catch (_) { /* storage blocked or full: keep the old key for next time */ }
+  }
+})();
+
+const THEME_KEY = 'scrumdesk.theme.v1';
 const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
 
 function savedTheme() {

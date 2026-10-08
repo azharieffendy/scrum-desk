@@ -15,7 +15,7 @@ const path = require('node:path');
 const PORT = 4000 + Math.floor(Math.random() * 90);
 const BASE = 'http://127.0.0.1:' + PORT;
 const SETUP_CODE = 'test-setup-code';
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-scrum-lead-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scrum-desk-lead-'));
 let proc;
 
 async function api(method, pathname, { body, cookie } = {}) {
