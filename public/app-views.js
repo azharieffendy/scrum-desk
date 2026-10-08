@@ -17,6 +17,7 @@ function attNote(att) {
 
 function buildNotes(dateISO) {
   const day = state.days[dateISO];
+  const blockerRuns = blockersOnDay(blockerEpisodes(state, { through: dateISO }), dateISO);
   const lines = [];
   lines.push('Daily Standup — ' + fmtDay(dateISO));
   if (hasTeamPicker() && ui.team) lines.push('Team: ' + (ui.team === 'none' ? 'No lead' : leadName(ui.team) + "'s team"));
@@ -48,7 +49,10 @@ function buildNotes(dateISO) {
     if (hasText || tickets.length) {
       if ((e.yesterday || '').trim()) lines.push('Yesterday: ' + e.yesterday.trim());
       if ((e.today || '').trim()) lines.push('Today: ' + e.today.trim());
-      if ((e.blockers || '').trim()) lines.push('Blockers: ' + e.blockers.trim());
+      if ((e.blockers || '').trim()) {
+        const run = blockerRuns.get(m.id);
+        lines.push('Blockers: ' + e.blockers.trim() + (run && run.age > 1 ? ' (blocked ' + daysLabel(run.age) + ')' : ''));
+      }
       if (tickets.length) lines.push('JIRA: ' + tickets.map((t) => t.key + ' ' + t.summary + ' (' + t.status + ')').join('; '));
     }
     lines.push('');
@@ -288,6 +292,8 @@ const AWAY = ['leave', 'sick', 'noshow'];
 const entryOf = (day, id) => (day && day.entries && day.entries[id]) || {};
 const hasText = (v) => typeof v === 'string' && v.trim() !== '';
 const hasBlocker = (e) => hasText(e.blockers);
+/** Has a blocker today, or an earlier one still waiting for Still blocked / Resolved. */
+const flagsBlocker = (m, e) => hasBlocker(e) || Boolean(pendingCarry(m.id, e));
 const hasNotes = (e) => hasText(e.yesterday) || hasText(e.today) || hasText(e.blockers);
 /** Away with nothing written: shown only in the roll call, not as a card. */
 const isStripped = (e) => AWAY.includes(e.attendance) && !hasNotes(e);
@@ -301,7 +307,7 @@ function todaySummary(members, day) {
     const e = entryOf(day, m.id);
     if (AWAY.includes(e.attendance)) out.away++; else out.here++;
     if (e.attendance === 'late') out.late++;
-    if (hasBlocker(e)) out.blockers++;
+    if (flagsBlocker(m, e)) out.blockers++;
     if (needsUpdate(e)) out.noUpdate++;
   }
   return out;
@@ -384,11 +390,12 @@ function boardViewHtml() {
  * ui.todayFilter 'blockers' / 'noupdate' narrows either layout.
  */
 function startedBoardHtml(members, day, isToday) {
+  refreshBoardBlockers(ui.date);
   const filter = ui.todayFilter || '';
   const sheet = ui.boardView === 'sheet';
   const shown = members.filter((m) => {
     const e = entryOf(day, m.id);
-    if (filter === 'blockers') return hasBlocker(e);
+    if (filter === 'blockers') return flagsBlocker(m, e);
     if (filter === 'noupdate') return needsUpdate(e);
     return sheet || !isStripped(e);
   });
@@ -445,7 +452,7 @@ function sheetRow(m, day) {
     </div></th>
     <td>${sheetNote(m, e, 'yesterday', 'Yesterday')}</td>
     <td>${sheetNote(m, e, 'today', 'Today')}</td>
-    <td class="sheet-blockers">${sheetNote(m, e, 'blockers', 'Blockers')}</td>
+    <td class="sheet-blockers">${blockerAgeHtml(m.id, e)}${carryPromptHtml(m, e, true)}${sheetNote(m, e, 'blockers', 'Blockers')}</td>
     <td>${tickets.length ? `${ticketBarHtml(counts, tickets.length)}
       <span class="sheet-ticket-meta">${counts.progress} in progress · ${counts.done}/${tickets.length} done</span>` : '<span class="sheet-ticket-meta">—</span>'}</td>
   </tr>`;
@@ -465,15 +472,15 @@ function sheetHtml(shown, members, day) {
   </table></div>`;
 }
 
-function entryField(m, e, field, label, placeholder) {
+function entryField(m, e, field, label, placeholder, extra = '') {
   const value = e[field] || '';
   const editing = ui.editingNote && ui.editingNote.date === ui.date && ui.editingNote.member === m.id && ui.editingNote.field === field;
   const attrs = `data-date="${esc(ui.date)}" data-member="${esc(m.id)}" data-field="${field}"`;
   const text = value.trim() ? esc(value) : (field === 'blockers' ? 'No blockers' : 'No update yet');
-  if (!canEdit()) return `<div class="field field-${field}"><span>${label}</span><p class="note-text${value.trim() ? '' : ' note-empty'}">${text}</p></div>`;
-  if (ui.compact && !editing) return `<div class="field field-${field}"><span>${label}</span>
+  if (!canEdit()) return `<div class="field field-${field}"><span>${label}${extra}</span><p class="note-text${value.trim() ? '' : ' note-empty'}">${text}</p></div>`;
+  if (ui.compact && !editing) return `<div class="field field-${field}"><span>${label}${extra}</span>
     <button type="button" class="note-preview${value.trim() ? '' : ' note-empty'}" data-action="edit-note" ${attrs} aria-label="Edit ${field} for ${esc(m.name)}: ${text}">${text}</button></div>`;
-  return `<div class="field field-${field}"><label class="field"><span>${label}</span>
+  return `<div class="field field-${field}"><label class="field"><span>${label}${extra}</span>
     <textarea data-entry ${attrs} rows="3" placeholder="${placeholder}" aria-label="${field} for ${esc(m.name)}">${esc(value)}</textarea></label>
     ${ui.compact ? `<button type="button" class="btn btn-ghost btn-sm" data-action="finish-note" ${attrs}>Done editing</button>` : ''}</div>`;
 }
@@ -549,7 +556,7 @@ function memberCard(m, day) {
   const counts = ticketSummary(tickets);
   const ticketKey = JSON.stringify([ui.date, m.id]);
   const ticketsOpen = ui.ticketExpansion.has(ticketKey) ? ui.ticketExpansion.get(ticketKey) : !ui.compact && tickets.length > 0;
-  const blockers = blocked || canEdit() ? entryField(m, e, 'blockers', blocked ? 'Blocker' : 'Blockers', 'Anything stuck or needed&hellip;') : '';
+  const blockers = blocked || canEdit() ? entryField(m, e, 'blockers', blocked ? 'Blocker' : 'Blockers', 'Anything stuck or needed&hellip;', blockerAgeHtml(m.id, e)) : '';
   const n = tickets.length;
   return `
   <article class="member-card${att !== 'present' ? ' att-' + att : ''}${blocked ? ' has-blocker' : ''}" data-member="${esc(m.id)}" data-search="${esc((m.name + ' ' + (m.role || '')).toLowerCase())}">
@@ -561,7 +568,7 @@ function memberCard(m, day) {
         <button class="btn-icon-ghost" data-action="edit-member" data-id="${esc(m.id)}" title="Edit ${esc(m.name)}">&#9998;</button>
       </div>` : ''}
     </header>
-    ${blocked ? blockers : ''}
+    ${blocked ? blockers : carryPromptHtml(m, e, false)}
     ${entryField(m, e, 'yesterday', 'Yesterday', 'What was finished&hellip;')}
     ${entryField(m, e, 'today', 'Today', 'What is the focus today&hellip;')}
     ${blocked ? '' : blockers}
@@ -1215,12 +1222,13 @@ function render() {
   else if (ui.view === 'report') app.innerHTML = reportsTabsHtml() + viewReport();
   else if (ui.view === 'kpi') app.innerHTML = reportsTabsHtml() + viewKpi();
   else if (ui.view === 'pi') app.innerHTML = reportsTabsHtml() + viewPi();
+  else if (ui.view === 'blockers') app.innerHTML = reportsTabsHtml() + viewBlockers();
   else if (ui.view === 'settings') app.innerHTML = viewSettings();
   else app.innerHTML = viewToday();
   // forget a menu whose pill is no longer on the page (another view, a live update removed the card)
   if (ui.attMenu && !app.innerHTML.includes('class="att-menu"')) ui.attMenu = null;
   $$('#tabs [data-view]').forEach((t) => {
-    const selected = t.dataset.view === ui.view || (t.hasAttribute('data-reports') && ['report', 'kpi', 'pi'].includes(ui.view));
+    const selected = t.dataset.view === ui.view || (t.hasAttribute('data-reports') && ['report', 'kpi', 'pi', 'blockers'].includes(ui.view));
     t.classList.toggle('active', selected);
     if (selected) t.setAttribute('aria-current', 'page'); else t.removeAttribute('aria-current');
   });
@@ -1237,9 +1245,9 @@ function render() {
   }
 }
 
-/** One Reports page: Attendance / Sprint delivery / Performance as tabs. */
+/** One Reports page: Attendance / Sprint delivery / Performance / Blockers as tabs. */
 function reportsTabsHtml() {
-  const tabs = [['report', 'Attendance'], ['kpi', 'Sprint delivery'], ['pi', 'Performance']].filter(([id]) => id !== 'pi' || isPiAvailable());
+  const tabs = [['report', 'Attendance'], ['kpi', 'Sprint delivery'], ['pi', 'Performance'], ['blockers', 'Blockers']].filter(([id]) => id !== 'pi' || isPiAvailable());
   return `<nav class="report-tabs" aria-label="Reports">${tabs.map(([id, label]) =>
     `<button class="report-tab${ui.view === id ? ' active' : ''}" data-action="view" data-view="${id}"${ui.view === id ? ' aria-current="page"' : ''}>${label}</button>`).join('')}</nav>`;
 }

@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 // The UI scripts in index.html load order. Each runs as its own script in
 // one shared context, like the browser; init() is left out.
-const sources = ['theme.js', 'monthly-report.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-query.js', 'pi-report.js', 'pi-editor.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'full-backup.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
+const sources = ['theme.js', 'monthly-report.js', 'blockers.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-query.js', 'pi-report.js', 'pi-editor.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'full-backup.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
   fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8').replace(/\ninit\(\);\s*$/, '\n'));
 
 function appContext(fetchImpl = async () => { throw new Error('unexpected fetch'); }) {
@@ -1615,4 +1615,90 @@ test('the restore review lists what is replaced and warnings, escaped', () => {
   assert.match(html, /&lt;b&gt;owner&lt;\/b&gt;/);
   assert.doesNotMatch(html, /<b>owner<\/b>/);
   assert.ok(vm.runInContext("ADMIN_ACTIONS.includes('full-restore') && EDIT_ACTIONS.includes('full-restore')", context));
+});
+
+/* Blocker carry-over and the Reports → Blockers tab. */
+function blockerBoard(context, earlier, todayEntries) {
+  todayBoard(context, todayEntries);
+  vm.runInContext(`
+    var daysAgo = (n) => { const d = new Date(ui.date + 'T00:00:00'); d.setDate(d.getDate() - n); return d.toLocaleDateString('sv-SE'); };
+    const earlier = ${JSON.stringify(earlier)};
+    earlier.forEach((entries, i) => {
+      state.days[daysAgo(earlier.length - i)] = { startedAt: 's', roster: state.members.map(memberSnapshot), entries, jira: null };
+    });
+  `, context);
+}
+
+test('an unresolved blocker from the last standup asks Still blocked / Resolved and counts as a blocker', () => {
+  const { context } = appContext();
+  blockerBoard(context, [{ m1: { blockers: 'Need <DB> access' } }, { m1: { blockers: 'Need <DB> access' } }], { m1: { today: 'Plan' } });
+  const card = vm.runInContext('viewToday(); memberCard(state.members[0], state.days[ui.date])', context);
+  assert.match(card, /class="carry-prompt"/);
+  assert.match(card, /Need &lt;DB&gt; access/);
+  assert.match(card, /data-action="blocker-carry" data-member="m1"/);
+  assert.match(card, /data-action="blocker-resolve" data-member="m1"/);
+  assert.doesNotMatch(vm.runInContext('memberCard(state.members[1], state.days[ui.date])', context), /carry-prompt/);
+  assert.equal(vm.runInContext('todaySummary(state.members, state.days[ui.date]).blockers', context), 1);
+  vm.runInContext("auth.role = 'viewer'", context);
+  const viewer = vm.runInContext('viewToday(); memberCard(state.members[0], state.days[ui.date])', context);
+  assert.match(viewer, /Not confirmed today/);
+  assert.doesNotMatch(viewer, /data-action="blocker-carry"/);
+});
+
+test('Still blocked copies the blocker with its start date and the card shows its age', () => {
+  const { context } = appContext();
+  blockerBoard(context, [{ m1: { blockers: 'Need DB access' } }, { m1: { blockers: 'need db  access' } }], { m1: { today: 'Plan' } });
+  vm.runInContext("toast = () => {}; viewToday(); clickActions['blocker-carry']({ dataset: { member: 'm1', date: ui.date } })", context);
+  const e = vm.runInContext('state.days[ui.date].entries.m1', context);
+  assert.equal(e.blockers, 'need db  access');
+  assert.equal(e.blockerSince, vm.runInContext('daysAgo(2)', context));
+  assert.equal(e.today, 'Plan', 'the rest of the note is kept');
+  const card = vm.runInContext('viewToday(); memberCard(state.members[0], state.days[ui.date])', context);
+  assert.doesNotMatch(card, /carry-prompt/);
+  assert.match(card, /class="blocker-age stale"[^>]*>Blocked · 3 standup days/);
+  assert.match(vm.runInContext('buildNotes(ui.date)', context), /Blockers: need db {2}access \(blocked 3 standup days\)/);
+});
+
+test('Resolved closes the blocker, and Undo brings the question back', () => {
+  const { context } = appContext();
+  blockerBoard(context, [{ m1: { blockers: 'VPN down' } }], {});
+  let undo = null;
+  vm.runInContext("toast = () => {}", context);
+  context.toastUndo = (msg, fn) => { undo = fn; };
+  vm.runInContext("viewToday(); clickActions['blocker-resolve']({ dataset: { member: 'm1', date: ui.date } })", context);
+  assert.equal(vm.runInContext('state.days[ui.date].entries.m1.blockerResolved', context), vm.runInContext('daysAgo(1)', context));
+  assert.doesNotMatch(vm.runInContext('viewToday()', context), /carry-prompt/);
+  assert.equal(vm.runInContext('currentBlockerReport().open.length', context), 0);
+  vm.runInContext("state.days[ui.date].entries.m1.today = 'Typed after Resolved'", context);
+  undo();
+  assert.match(vm.runInContext('viewToday()', context), /carry-prompt/);
+  assert.equal(vm.runInContext('state.days[ui.date].entries.m1.today', context), 'Typed after Resolved', 'Undo keeps newer typing');
+  assert.equal(vm.runInContext("'blockerResolved' in state.days[ui.date].entries.m1", context), false);
+});
+
+test('clearing a carried blocker drops its start date so a new blocker starts fresh', () => {
+  const { context } = appContext();
+  blockerBoard(context, [{ m1: { blockers: 'VPN down' } }], { m1: { blockers: 'VPN down', blockerSince: 'x' } });
+  vm.runInContext(`onDocInput({ target: { matches: () => true, closest: () => null,
+    dataset: { date: ui.date, member: 'm1', field: 'blockers' }, value: '' } })`, context);
+  assert.equal(vm.runInContext("'blockerSince' in state.days[ui.date].entries.m1", context), false);
+});
+
+test('the Blockers report tab lists open blockers with ages and the log, filtered by member', () => {
+  const { context } = appContext();
+  blockerBoard(context, [
+    { m1: { blockers: 'Need DB access' }, m2: { blockers: 'Flaky env' } },
+    { m1: { blockers: 'Need DB access' }, m2: { today: 'tests' } },
+  ], { m1: { blockers: 'Need DB access' } });
+  vm.runInContext("ui.view = 'blockers'; ui.blockerAll = true", context);
+  const html = vm.runInContext('reportsTabsHtml() + viewBlockers()', context);
+  assert.match(html, /class="report-tab active"[^>]*data-view="blockers"[^>]*>Blockers/);
+  assert.match(html, /<b>1<\/b> open/);
+  assert.match(html, /blocker-open stale[\s\S]*Ana[\s\S]*Need DB access[\s\S]*3 standup days/);
+  assert.match(html, /class="blocker-log"[\s\S]*Flaky env[\s\S]*Resolved/);
+  vm.runInContext("onDocChange({ target: { id: 'blockerMember', value: 'm2', dataset: {}, matches: () => false, closest: () => null } })", context);
+  const budi = vm.runInContext('viewBlockers()', context);
+  assert.doesNotMatch(budi, /Need DB access/);
+  assert.match(budi, /Flaky env/);
+  assert.equal(vm.runInContext("navigationFromUrl('http://x/?view=blockers').view", context), 'blockers');
 });
