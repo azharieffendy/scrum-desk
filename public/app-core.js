@@ -75,6 +75,7 @@ const ui = {
   statusPick: '', todayFilter: '', attMenu: null, settingsTab: '', team: '',
   sprintMode: loadJSON('dailyscrum.sprintMode.v1', 'board') === 'list' ? 'list' : 'board',
   sprintDoneOpen: new Set(), sprintMapOpen: false, histMonth: '', histSel: '', jiraDraft: null,
+  blockerMember: '', blockerAll: false,
 };
 
 function jiraDraftValues() {
@@ -135,7 +136,7 @@ function validNavigationDate(value) {
 /** Read only known UI options; team and settings access follow the signed-in role. */
 function navigationFromUrl(href) {
   const params = new URL(href).searchParams;
-  const views = ['today', 'sprint', 'history', 'report', 'kpi', 'pi', 'settings'];
+  const views = ['today', 'sprint', 'history', 'report', 'kpi', 'pi', 'blockers', 'settings'];
   let view = views.includes(params.get('view')) ? params.get('view') : 'today';
   if (view === 'pi' && !isPiAvailable()) view = 'today';
   const team = params.get('team') || '';

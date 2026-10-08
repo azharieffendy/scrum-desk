@@ -95,7 +95,10 @@ SEED = r"""() => {
         attendance: i === (day % 6) ? 'late' : i === 5 && day % 2 ? 'leave' : 'present',
         yesterday: 'Reviewed project work.',
         today: 'Continue sprint tasks.',
-        blockers: i === 1 && day === 23 ? 'Waiting for API credentials.' : ''
+        blockers: i === 1 && day >= 21 ? 'Waiting for API credentials.'
+          : i === 2 && day === 25 ? 'Staging database is read-only.'
+          : i === 3 && (day === 9 || day === 11) ? 'Test devices unavailable.'
+          : i === 4 && day === 15 ? 'Waiting for brand assets.' : ''
       }]))
     };
   }
@@ -270,6 +273,7 @@ def main():
             ("attendance-report", "report", None, ".att-grid-panel"),
             ("sprint-delivery-report", "kpi", None, ".kpi-cards"),
             ("performance-report", "pi", None, ".pi-rank"),
+            ("blockers-report", "blockers", None, ".blocker-open-list"),
             ("settings-team", "settings", "team", ".member-table"),
             ("settings-jira", "settings", "jira", "#setSite"),
             ("settings-backup", "settings", "data", ".backup-review"),
@@ -286,6 +290,7 @@ def main():
                 """({view, tab, filename}) => {
                   ui.view = view;
                   if (tab) ui.settingsTab = tab;
+                  if (view === 'blockers') ui.blockerAll = true;
                   if (view === 'sprint') ui.sprintMode = filename === 'sprint-list' ? 'list' : 'board';
                   render();
                 }""",

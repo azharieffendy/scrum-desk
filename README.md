@@ -16,7 +16,10 @@ a SQLite database, and JIRA Cloud integration — all in one Docker container.
   (button available too)
 - **Daily report** — copy formatted standup notes or download a day as an Excel workbook
 - **History** — browse started days in a calendar, inspect attendance and blockers, then reopen or copy a day
-- **Reports** — one tab for monthly attendance, sprint delivery (KPI), and the Performance report
+- **Reports** — one tab for monthly attendance, sprint delivery (KPI), the Performance report and Blockers
+- **Blocker tracking** — a blocker left open at the last standup comes back on the next board as
+  **Still blocked? / Resolved**; carried blockers show how many standup days they have been open,
+  and **Reports → Blockers** lists who is blocked now plus a blocker log for retrospectives (see [Blockers](#blockers))
 - **Monthly attendance** — a colour-coded day-by-day grid with member totals and rates;
   **Download Excel** gives a .xlsx with Summary, Attendance and Daily detail sheets
   (viewers can use it too)
@@ -43,10 +46,12 @@ capture only those.
 | [![Sprint list with demo tickets](docs/screenshots/sprint-list.png)](docs/screenshots/sprint-list.png) | [![History calendar with demo attendance](docs/screenshots/history.png)](docs/screenshots/history.png) |
 | Reports: Attendance | Reports: Sprint delivery |
 | [![Monthly attendance grid with demo data](docs/screenshots/attendance-report.png)](docs/screenshots/attendance-report.png) | [![Sprint delivery report with demo data](docs/screenshots/sprint-delivery-report.png)](docs/screenshots/sprint-delivery-report.png) |
-| Reports: Performance | Settings: Team members |
-| [![Performance report with demo data](docs/screenshots/performance-report.png)](docs/screenshots/performance-report.png) | [![Team settings with demo members](docs/screenshots/settings-team.png)](docs/screenshots/settings-team.png) |
-| Settings: JIRA connection | Settings: Data & backup |
-| [![JIRA settings draft save bar with demo values](docs/screenshots/settings-jira.png)](docs/screenshots/settings-jira.png) | [![Full backup and restore review with a demo backup](docs/screenshots/settings-backup.png)](docs/screenshots/settings-backup.png) |
+| Reports: Performance | Reports: Blockers |
+| [![Performance report with demo data](docs/screenshots/performance-report.png)](docs/screenshots/performance-report.png) | [![Blockers report with demo data](docs/screenshots/blockers-report.png)](docs/screenshots/blockers-report.png) |
+| Settings: Team members | Settings: JIRA connection |
+| [![Team settings with demo members](docs/screenshots/settings-team.png)](docs/screenshots/settings-team.png) | [![JIRA settings draft save bar with demo values](docs/screenshots/settings-jira.png)](docs/screenshots/settings-jira.png) |
+| Settings: Data & backup | |
+| [![Full backup and restore review with a demo backup](docs/screenshots/settings-backup.png)](docs/screenshots/settings-backup.png) | |
 
 ## Board controls
 
@@ -382,6 +387,30 @@ JIRA: PAY-231 Fix retry dedup (In Progress); PAY-235 Reconcile job (To Do)
 
 * Sari Putri (QA) — ON LEAVE
 ```
+
+## Blockers
+
+A blocker is followed from standup to standup until it is gone:
+
+- **Carry-over** — when someone had a blocker at the last standup and today's Blockers field is
+  empty, their card asks **Still blocked?** with the earlier text. **Still blocked** copies it into
+  today's note and keeps its start date (reword it freely); **Resolved** closes it (with **Undo**).
+  Nothing is written into the note until someone answers, and viewers see the question without the
+  buttons. An unanswered question counts in the **Blockers** filter for that day.
+- **Age** — counted in **standup days**: days a standup was started, from the day the blocker was
+  first reported up to the latest one. Weekends, holidays and days without a standup do not count;
+  days the member was on leave, sick or absent do count, and do not end the blocker. A badge shows
+  *Blocked · N standup days* from the second day, in red from the third. Copied standup notes add
+  *(blocked N standup days)*.
+- **Same blocker** — the same text on consecutive standups (ignoring case and extra spaces), or a
+  blocker carried with **Still blocked**. A different blocker, or a standup where the member gave no
+  blocker, ends it.
+- **Reports → Blockers** — *Open now* lists who is blocked, oldest first; *Blocker log* lists every
+  blocker with its start, last day, standup days open and how it ended, for the chosen month (or
+  **All months**) and member. Click a date to open that day. **Download Excel** saves the same two
+  lists. Technical leads see only their team.
+
+Old notes need no changes: the log is worked out from the Blockers field of past days.
 
 ## KPI report (sprint delivery)
 

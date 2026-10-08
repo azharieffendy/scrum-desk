@@ -252,7 +252,7 @@ const ADMIN_ACTIONS = ['reset-jql', 'jira-save', 'jira-discard', 'import-btn', '
   'kpi-role-add', 'kpi-role-remove'];
 
 const EDIT_ACTIONS = ['add-member', 'edit-member', 'remove-member', 'sync',
-  'start-day', 'cancel-day', 'edit-note', 'finish-note', 'delete-day', 'reset-jql', 'jira-save', 'jira-discard', 'import-btn', 'erase', 'test-conn', 'export', 'full-restore', 'full-restore-cancel',
+  'start-day', 'cancel-day', 'edit-note', 'finish-note', 'blocker-carry', 'blocker-resolve', 'delete-day', 'reset-jql', 'jira-save', 'jira-discard', 'import-btn', 'erase', 'test-conn', 'export', 'full-restore', 'full-restore-cancel',
   'kpi-detect-field', 'status-color-pick', 'status-color-set', 'status-color-reset',
   'pi-generate', 'pi-download', 'pi-reset-jql', 'pi-preview', 'pi-save', 'pi-discard', 'pi-analyze', 'pi-convert', 'pi-use-conversion', 'pi-builder', 'pi-direct', 'pi-insert', 'pi-rule-add', 'pi-rule-remove', 'pi-options', 'kpi-role-add', 'kpi-role-remove'];
 
@@ -352,6 +352,10 @@ const clickActions = {
   'month-next': () => { ui.month = shiftMonth(ui.month, 1); render(); },
   'month-current': () => { ui.month = todayISO().slice(0, 7); render(); },
   'download-xlsx': () => downloadMonthlyXlsx(),
+  'download-blockers': () => downloadBlockersXlsx(),
+  'blocker-all': () => { ui.blockerAll = !ui.blockerAll; render(); },
+  'blocker-carry': (el) => answerCarry(el.dataset.member, el.dataset.date, true),
+  'blocker-resolve': (el) => answerCarry(el.dataset.member, el.dataset.date, false),
   'kpi-refresh': () => refreshKpi(),
   'kpi-download': () => downloadKpiXlsx(),
   'kpi-reload': () => { kpiUi.error = null; render(); },
@@ -578,6 +582,8 @@ function onDocInput(e) {
     if (!isStarted(day)) return;
     day.entries[t.dataset.member] = day.entries[t.dataset.member] || {};
     day.entries[t.dataset.member][t.dataset.field] = t.value;
+    // a cleared blocker is over; whatever is typed next is a new one
+    if (t.dataset.field === 'blockers' && !t.value.trim()) delete day.entries[t.dataset.member].blockerSince;
     saveStatus('Saving…');
     persistSoon();
     refreshBlockerMarks(t, day);
@@ -587,7 +593,11 @@ function onDocInput(e) {
 /** Typing a blocker flags the card and recounts the summary without a re-render, so focus stays put. */
 function refreshBlockerMarks(t, day) {
   const card = t.closest('.member-card, .sheet-row');
-  if (card && t.dataset.field === 'blockers') card.classList.toggle('has-blocker', t.value.trim() !== '');
+  if (card && t.dataset.field === 'blockers') {
+    card.classList.toggle('has-blocker', t.value.trim() !== '');
+    const prompt = card.querySelector('.carry-prompt');
+    if (prompt) prompt.hidden = t.value.trim() !== ''; // typing a blocker answers the question
+  }
   const bar = document.getElementById('todaySummary');
   if (bar) bar.outerHTML = todaySummaryHtml(boardMembersFor(t.dataset.date, day), day);
 }
@@ -598,6 +608,7 @@ function onDocChange(e) {
   if (t.id === 'dateInput' && t.value) { ui.date = t.value; render(); return; }
   if (t.id === 'monthInput' && isValidMonth(t.value)) { ui.month = t.value; render(); return; }
   if (t.id === 'teamFilter') { ui.team = t.value; render(); return; }
+  if (t.id === 'blockerMember') { ui.blockerMember = t.value; render(); return; }
   if (t.id === 'kpiJump' && isValidMonth(t.value)) { ui.month = t.value; render(); return; }
   if (t.id === 'kpiPerson') { kpiUi.memberKey = t.value; render(); return; }
   if (t.id === 'kpiTaskMember') { applyKpiTaskMember(t.value); return; }
