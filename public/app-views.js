@@ -88,13 +88,62 @@ function downloadText(filename, text) {
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
+/** One workbook for a started day: attendance and notes, plus one row per matched JIRA ticket. */
+function dayReportSheets(dateISO) {
+  const day = state.days[dateISO];
+  const people = membersForDay(dateISO).map((m) => ({
+    member: m, entry: (day.entries || {})[m.id] || {}, tickets: memberIssues(dateISO, m.id),
+  }));
+  const heading = (labels) => labels.map((v) => ({ v, s: 'header' }));
+  const standupRows = [
+    [{ v: 'Daily Standup — ' + fmtDay(dateISO), s: 'title' }],
+    [{ v: 'Date', s: 'boldText' }, dateISO],
+  ];
+  if (hasTeamPicker() && ui.team) standupRows.push([{ v: 'Team', s: 'boldText' }, ui.team === 'none' ? 'No lead' : leadName(ui.team) + "'s team"]);
+  if (day.jira && day.jira.sprint) standupRows.push([{ v: 'Sprint', s: 'boldText' }, day.jira.sprint.name || '']);
+  standupRows.push([], heading(['Member', 'Role', 'Attendance', 'Yesterday', 'Today', 'Blockers', 'Sprint tickets']));
+  for (const { member, entry, tickets } of people) {
+    const attendance = ATT[entry.attendance] ? entry.attendance : 'present';
+    standupRows.push([
+      { v: member.name, s: 'text' }, { v: member.role || '', s: 'text' },
+      { v: ATT[attendance].label, s: attendance },
+      ...['yesterday', 'today', 'blockers'].map((field) => ({ v: String(entry[field] || ''), s: 'text' })),
+      { v: tickets.length, s: 'num' },
+    ]);
+  }
+  const ticketRows = [heading(['Member', 'Key', 'Summary', 'Status', 'Priority'])];
+  for (const { member, tickets } of people) {
+    for (const ticket of tickets) ticketRows.push([
+      { v: member.name, s: 'text' },
+      { v: ticket.key || '', s: ticket.url ? 'link' : 'text', link: ticket.url },
+      { v: ticket.summary || '', s: 'text' }, { v: ticket.status || '', s: 'text' },
+      { v: ticket.priority || '', s: 'text' },
+    ]);
+  }
+  return [
+    { name: 'Daily standup', cols: [24, 18, 16, 38, 38, 38, 16], freeze: { row: standupRows.length - people.length }, rows: standupRows },
+    { name: 'Sprint tickets', cols: [24, 16, 55, 20, 16], freeze: { row: 1 }, rows: ticketRows },
+  ];
+}
+
 function downloadReport(dateISO) {
   const d = dateISO || ui.date;
   if (!isStarted(state.days[d])) { toast('No daily scrum on this day'); return; }
-  const text = buildNotes(d);
-  if (!text) { toast('Nothing to report yet'); return; }
-  downloadText('standup-report-' + d + '.txt', text);
-  toast('Report downloaded', 'success');
+  try {
+    const bytes = XlsxLite.build(dayReportSheets(d));
+    const blob = new Blob([bytes], { type: XlsxLite.MIME });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'standup-report-' + d + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast('Excel report downloaded', 'success');
+  } catch (err) {
+    console.error('Daily standup Excel export failed', err);
+    toast('Could not create the Excel file', 'error');
+  }
 }
 
 /* ---------------- view templates ---------------- */
@@ -165,7 +214,7 @@ function viewToday() {
       <details class="nav-dropdown day-actions">
         <summary class="btn btn-ghost">More</summary>
         <div class="dropdown-panel">
-          <button class="btn btn-ghost" data-action="report">Download day report</button>
+          <button class="btn btn-ghost" data-action="report">Download Excel report</button>
           ${canEdit() ? '<button class="btn btn-ghost danger" data-action="cancel-day">Cancel standup</button>' : ''}
         </div>
       </details>
@@ -266,22 +315,59 @@ function todaySummaryHtml(members, day) {
     `<button type="button" class="seg-btn${val === 'blockers' ? ' seg-blockers' : ''}" data-action="today-filter" data-filter="${val}" aria-pressed="${cur === val}">${label} <span>${n}</span></button>`).join('')}</div>`;
 }
 
-/** One row of everyone on the roster; clicking a person cycles their attendance. */
+/* Attendance status: a coloured pill that opens a menu of every status.
+ * ui.attMenu = { id, src } names the one open menu; src is 'roll', 'card' or 'sheet'. */
+
+/** The status pill; editors see a caret so it reads as something to click. */
+function attPill(att, edit) {
+  return `<span class="att-pill att-${att}"><span class="att-dot" aria-hidden="true"></span>${esc(ATT[att].label)}${edit ? '<span class="att-caret" aria-hidden="true">&#9662;</span>' : ''}</span>`;
+}
+
+const attMenuOpen = (id, src) => Boolean(ui.attMenu && ui.attMenu.id === id && ui.attMenu.src === src);
+
+function attTriggerAttrs(m, att, src) {
+  return `data-action="att-menu" data-id="${esc(m.id)}" data-src="${src}" aria-haspopup="menu" aria-expanded="${attMenuOpen(m.id, src)}" aria-label="Attendance for ${esc(m.name)}: ${esc(ATT[att].label)}. Change status"`;
+}
+
+/** The open menu under one pill: every status with its hint and shortcut key, the current one checked. */
+function attMenuHtml(m, att, src) {
+  if (!attMenuOpen(m.id, src)) return '';
+  return `<div class="att-menu" role="menu" aria-label="Attendance for ${esc(m.name)}">${Object.keys(ATT).map((k) =>
+    `<button type="button" class="att-option att-${k}" role="menuitemradio" aria-checked="${k === att}" tabindex="-1" data-action="att-set" data-id="${esc(m.id)}" data-src="${src}" data-att="${k}">
+      <span class="att-dot" aria-hidden="true"></span><span class="att-option-text">${esc(ATT[k].label)}<small>${esc(ATT[k].title)}</small></span><kbd aria-hidden="true">${ATT[k].key.toUpperCase()}</kbd></button>`).join('')}</div>`;
+}
+
+/** Status on a card or sheet row: pill button and menu for editors, a plain pill for viewers. */
+function attControl(m, att, src) {
+  if (!canEdit()) return `<span class="att-pick" title="${esc(ATT[att].title)}">${attPill(att, false)}</span>`;
+  return `<span class="att-pick"><button type="button" class="att-trigger" ${attTriggerAttrs(m, att, src)}>${attPill(att, true)}</button>${attMenuHtml(m, att, src)}</span>`;
+}
+
+/** The menu is fixed-position so card and sheet scroll boxes never clip it: below the pill, or above when there is no room. */
+function positionAttMenu() {
+  const menu = $('.att-menu');
+  const trigger = menu && $('[data-action="att-menu"]', menu.parentElement);
+  if (!trigger) return;
+  const r = trigger.getBoundingClientRect();
+  const below = r.bottom + 6 + menu.offsetHeight <= window.innerHeight;
+  menu.style.top = (below ? r.bottom + 6 : Math.max(8, r.top - 6 - menu.offsetHeight)) + 'px';
+  menu.style.left = Math.max(8, Math.min(r.left, window.innerWidth - 8 - menu.offsetWidth)) + 'px';
+}
+
+/** One row of everyone on the roster; clicking a person opens their status menu. */
 function rollCallHtml(members, day) {
   const s = todaySummary(members, day);
   const edit = canEdit();
-  const keys = Object.keys(ATT);
   return `
   <section class="roll-call" aria-label="Roll call">
-    <div class="roll-count"><span class="roll-label">Roll call</span><span><b>${s.here}</b>/${s.total} here</span></div>
+    <div class="roll-count"><span class="roll-label">Roll call</span><span><b>${s.here}</b>/${s.total} here</span>${edit ? '<span class="roll-hint">Tap a status to change it</span>' : ''}</div>
     <div class="roll-people">${members.map((m) => {
       const saved = entryOf(day, m.id).attendance;
-      const att = keys.includes(saved) ? saved : 'present';
-      const label = ATT[att].label;
-      const inner = `<span class="avatar avatar-roll" style="background:${safeColor(m.color)}">${esc(initials(m.name))}</span><span class="roll-text"><span class="roll-name">${esc(m.name.split(' ')[0])}</span><span class="roll-att">${esc(label)}</span></span>`;
+      const att = ATT[saved] ? saved : 'present';
+      const inner = `<span class="avatar avatar-roll" style="background:${safeColor(m.color)}">${esc(initials(m.name))}</span><span class="roll-text"><span class="roll-name">${esc(m.name.split(' ')[0])}</span>${attPill(att, edit)}</span>`;
       return edit
-        ? `<button type="button" class="roll-person att-${att}" data-action="cycle-att" data-id="${esc(m.id)}" title="${esc(m.name)}: ${esc(label)} (click to change)" aria-label="Attendance for ${esc(m.name)}: ${esc(label)}. Click to change">${inner}</button>`
-        : `<span class="roll-person att-${att}" title="${esc(m.name)}: ${esc(label)}">${inner}</span>`;
+        ? `<span class="att-pick"><button type="button" class="roll-person att-${att}" ${attTriggerAttrs(m, att, 'roll')} title="${esc(m.name)}: ${esc(ATT[att].label)}">${inner}</button>${attMenuHtml(m, att, 'roll')}</span>`
+        : `<span class="roll-person att-${att}" title="${esc(m.name)}: ${esc(ATT[att].label)}">${inner}</span>`;
     }).join('')}</div>
   </section>`;
 }
@@ -351,9 +437,7 @@ function sheetRow(m, day) {
   const att = ATT[e.attendance] ? e.attendance : 'present';
   const tickets = memberIssues(ui.date, m.id);
   const counts = ticketSummary(tickets);
-  const attHtml = canEdit()
-    ? `<button type="button" class="sheet-att att-${att}" data-action="cycle-att" data-id="${esc(m.id)}" title="${esc(ATT[att].title)} (click to change)" aria-label="Attendance for ${esc(m.name)}: ${esc(ATT[att].label)}. Click to change">${esc(ATT[att].label)}</button>`
-    : `<span class="sheet-att att-${att}" title="${esc(ATT[att].title)}">${esc(ATT[att].label)}</span>`;
+  const attHtml = attControl(m, att, 'sheet');
   return `<tr class="sheet-row att-${att}${AWAY.includes(att) ? ' is-away' : ''}${hasBlocker(e) ? ' has-blocker' : ''}" data-member="${esc(m.id)}" data-search="${esc((m.name + ' ' + (m.role || '')).toLowerCase())}">
     <th scope="row"><div class="sheet-member">
       <span class="avatar avatar-roll" style="background:${safeColor(m.color)}">${esc(initials(m.name))}</span>
@@ -437,10 +521,18 @@ function filterMemberTickets(tickets, filter) {
   return tickets;
 }
 
+/** Today ticket priority: To Do, Untested, other active statuses, then Done. */
+function todayTicketRank(ticket) {
+  if (ticket.statusCategory === 'done') return 3;
+  if (ticket.statusCategory === 'new' || String(ticket.status || '').trim().toLowerCase() === 'to do') return 0;
+  if (String(ticket.status || '').trim().toLowerCase() === 'untested') return 1;
+  return 2;
+}
+
 function memberTicketsHtml(m, tickets, key) {
   const selected = ui.ticketFilters.get(key) || 'all';
   const counts = ticketSummary(tickets);
-  const shown = filterMemberTickets(tickets, selected);
+  const shown = filterMemberTickets(tickets, selected).slice().sort((a, b) => todayTicketRank(a) - todayTicketRank(b));
   const filters = [['all', 'All', tickets.length], ['active', 'Active', tickets.length - counts.done], ['done', 'Done', counts.done]];
   return `<div class="ticket-filters" role="group" aria-label="Sprint ticket filter for ${esc(m.name)}">
     ${filters.map(([value, label, count]) => `<button class="ticket-filter" type="button" data-action="ticket-filter" data-key="${esc(key)}" data-filter="${value}" aria-pressed="${selected === value}"${value === 'active' ? ' title="To do and in-progress tickets"' : ''}>${label} <span>${count}</span></button>`).join('')}
@@ -451,7 +543,7 @@ function memberTicketsHtml(m, tickets, key) {
 
 function memberCard(m, day) {
   const e = entryOf(day, m.id);
-  const att = e.attendance || 'present';
+  const att = ATT[e.attendance] ? e.attendance : 'present';
   const blocked = hasBlocker(e);
   const tickets = memberIssues(ui.date, m.id);
   const counts = ticketSummary(tickets);
@@ -464,7 +556,7 @@ function memberCard(m, day) {
     <header class="member-head">
       <span class="avatar" style="background:${safeColor(m.color)}">${esc(initials(m.name))}</span>
       <div class="member-name"><strong>${blocked ? '<span class="blocker-flag" title="Has a blocker">⚠</span>' : ''}${esc(m.name)}</strong>${m.role ? '<span>' + esc(m.role) + '</span>' : ''}</div>
-      ${att !== 'present' && ATT[att] ? `<span class="att-badge att-${att}" title="${esc(ATT[att].title)}">${esc(ATT[att].label)}</span>` : ''}
+      ${attControl(m, att, 'card')}
       ${canEdit() && memberById(m.id) ? `<div class="member-actions">
         <button class="btn-icon-ghost" data-action="edit-member" data-id="${esc(m.id)}" title="Edit ${esc(m.name)}">&#9998;</button>
       </div>` : ''}
@@ -539,12 +631,13 @@ function viewSprint() {
   const s = j.sprint;
   const team = filterByTeam(state.members);
   const teamIds = new Set(team.map((m) => m.id));
-  const narrowed = hasTeamPicker() && ui.team;
-  // a picked team keeps its own tickets plus the unassigned ones
+  const byMember = {};
   const issues = (j.issues || []).filter((t) => {
-    if (!narrowed || !t.assignee) return true;
+    if (!t.assignee) return false;
     const m = matchMember(t);
-    return Boolean(m && teamIds.has(m.id));
+    if (!m || !teamIds.has(m.id)) return false;
+    (byMember[m.id] = byMember[m.id] || []).push(t);
+    return true;
   });
   const cnt = (cat) => issues.filter((t) => t.statusCategory === cat).length;
   const synced = new Date(j.syncedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -556,15 +649,7 @@ function viewSprint() {
   }
   const share = (n) => ((n / (issues.length || 1)) * 100).toFixed(1) + '%';
 
-  const byMember = {};
-  const unassigned = [];
-  for (const t of issues) {
-    if (!t.assignee) { unassigned.push(t); continue; }
-    const m = matchMember(t);
-    if (m) (byMember[m.id] = byMember[m.id] || []).push(t);
-  }
-
-  const unmatched = unmatchedUsers(issues);
+  const unmatched = unmatchedUsers(j.issues || []);
   const listed = team.filter((m) => byMember[m.id]);
 
   const board = ui.sprintMode !== 'list';
@@ -621,28 +706,28 @@ function viewSprint() {
     ${elapsed == null ? '' : `<div class="sp-time" style="--t:${elapsed}%"><span class="sp-time-label">${elapsed}% of sprint time used</span></div>`}
   </section>
 
-  ${board ? sprintBoardHtml(listed, byMember, unassigned) : sprintMembersHtml(listed, byMember) + (unassigned.length ? sprintGroup('Unassigned', unassigned) : '')}
+  ${board ? sprintBoardHtml(listed, byMember) : sprintMembersHtml(listed, byMember)}
+  ${state.members.length && !listed.length ? '<section class="panel empty"><h3>No team tickets in this sprint</h3><p class="panel-sub">Only tickets assigned to a team member appear here.</p></section>' : ''}
 
   ${!state.members.length ? `
   <section class="panel empty">
     <h3>Add your team to see per-member tickets</h3>
-    <p class="panel-sub">Tickets above are grouped once members exist and are mapped.</p>
+    <p class="panel-sub">Add members and map their JIRA accounts to show their sprint tickets here.</p>
     ${canEdit() ? '<button class="btn btn-primary" data-action="add-member">+ Add team member</button>' : ''}
   </section>` : ''}`;
 }
 
-/** Board layout: one row per member, columns for in progress / to do / done (done collapsed to a count). */
-function sprintBoardHtml(members, byMember, unassigned) {
-  if (!members.length && !unassigned.length) return '';
+/** Board layout: one row per member, columns for to do / in progress / done (done collapsed to a count). */
+function sprintBoardHtml(members, byMember) {
+  if (!members.length) return '';
   const groups = teamGroups(members);
   const rows = groups
     ? groups.map((g) => `<div class="sb-group">${esc(g.name)} <span class="team-group-count">${g.members.length}</span></div>` + g.members.map((m) => sprintBoardRow(m, byMember[m.id])).join('')).join('')
     : members.map((m) => sprintBoardRow(m, byMember[m.id])).join('');
   return `
   <section class="panel sprint-board">
-    <div class="sb-row sb-head"><span>Member</span><span class="sb-h-prog">In progress</span><span>To do</span><span class="sb-h-done">Done</span></div>
+    <div class="sb-row sb-head"><span>Member</span><span>To do</span><span class="sb-h-prog">In progress</span><span class="sb-h-done">Done</span></div>
     ${rows}
-    ${unassigned.length ? sprintBoardRow({ id: '__unassigned', name: 'Unassigned', color: '' }, unassigned) : ''}
   </section>`;
 }
 
@@ -661,8 +746,8 @@ function sprintBoardRow(m, tickets) {
   return `
   <div class="sb-row">
     <div class="sb-who">${avatar}<div><strong>${esc(m.name)}</strong><span>${m.role ? esc(m.role) + ' · ' : ''}${tickets.length} ticket${tickets.length === 1 ? '' : 's'}</span></div></div>
-    <div class="sb-col">${col(prog, true)}</div>
     <div class="sb-col">${col(todo, false)}</div>
+    <div class="sb-col">${col(prog, true)}</div>
     <div class="sb-col sb-col-done">${done.length ? `<button type="button" class="sb-done-toggle" data-action="sprint-done" data-id="${esc(m.id)}" aria-expanded="${open}">${open ? '▾' : '▸'} ${done.length} done</button>${open
       ? '<ul class="sb-done">' + done.map((t) => `<li><a class="key" href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.key)}</a> <span>${esc(t.summary)}</span></li>`).join('') + '</ul>' : ''}` : '<span class="sb-empty">—</span>'}</div>
   </div>`;
@@ -684,8 +769,8 @@ function sprintMembersHtml(members, byMember) {
 
 function sprintMemberSection(m, tickets) {
   const groups = [
-    ['indeterminate', 'In progress'],
     ['new', 'To do'],
+    ['indeterminate', 'In progress'],
     ['done', 'Done'],
   ];
   const mini = groups.map(([cat, label]) => {
@@ -706,14 +791,6 @@ function sprintMemberSection(m, tickets) {
         '<ul class="tickets">' + list.map(ticketRow).join('') + '</ul>';
     }).join('')}
   </details>`;
-}
-
-function sprintGroup(title, tickets) {
-  return `
-  <section class="panel">
-    <div class="sprint-member-head"><strong>${esc(title)}</strong><span class="mini"><span class="m">${tickets.length}</span></span></div>
-    <ul class="tickets" style="margin-top:8px">${tickets.map(ticketRow).join('')}</ul>
-  </section>`;
 }
 
 /* ---------------- history view ---------------- */
@@ -813,7 +890,7 @@ function historyDetailHtml(iso) {
       <details class="nav-dropdown hd-more">
         <summary class="btn btn-ghost" aria-label="More actions" title="More actions">&hellip;</summary>
         <div class="dropdown-panel">
-          <button class="btn btn-ghost" data-action="report" data-date="${esc(iso)}">Download day report</button>
+          <button class="btn btn-ghost" data-action="report" data-date="${esc(iso)}">Download Excel report</button>
           ${canEdit() ? `<button class="btn btn-ghost danger" data-action="delete-day" data-date="${esc(iso)}">Delete this day&hellip;</button>` : ''}
         </div>
       </details>
@@ -1140,6 +1217,8 @@ function render() {
   else if (ui.view === 'pi') app.innerHTML = reportsTabsHtml() + viewPi();
   else if (ui.view === 'settings') app.innerHTML = viewSettings();
   else app.innerHTML = viewToday();
+  // forget a menu whose pill is no longer on the page (another view, a live update removed the card)
+  if (ui.attMenu && !app.innerHTML.includes('class="att-menu"')) ui.attMenu = null;
   $$('#tabs [data-view]').forEach((t) => {
     const selected = t.dataset.view === ui.view || (t.hasAttribute('data-reports') && ['report', 'kpi', 'pi'].includes(ui.view));
     t.classList.toggle('active', selected);
@@ -1150,7 +1229,7 @@ function render() {
   renderLogoutButton();
   renderSprintChip();
   renderSaveStatus();
-  if (ui.view === 'today') applyMemberSearch();
+  if (ui.view === 'today') { applyMemberSearch(); positionAttMenu(); }
   syncNavigationUrl();
   if (restore && active.isConnected === false) {
     const replacement = $(restore);

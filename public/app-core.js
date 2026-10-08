@@ -39,11 +39,11 @@ const LS_MIGRATION_PENDING = 'dailyscrum.migration-pending.v1';
 const PALETTE = ['#1066A0', '#108890', '#678D61', '#AA5019', '#A53956', '#594D7F', '#B24D7A', '#536C54'];
 
 const ATT = {
-  present: { label: 'Present', title: 'Attending the opening' },
-  late:    { label: 'Late',    title: 'Late for the opening' },
-  leave:   { label: 'Leave',   title: 'On leave today' },
-  sick:    { label: 'Sick',    title: 'Sick today' },
-  noshow:  { label: 'No show', title: 'Did not show up for the opening' },
+  present: { label: 'Present', title: 'Attending the opening',           key: 'p' },
+  late:    { label: 'Late',    title: 'Late for the opening',            key: 'l' },
+  leave:   { label: 'Leave',   title: 'On leave today',                  key: 'v' },
+  sick:    { label: 'Sick',    title: 'Sick today',                      key: 's' },
+  noshow:  { label: 'No show', title: 'Did not show up for the opening', key: 'n' },
 };
 
 const LOGO_SVG = '<svg viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#168edf"/><path d="M14 22c0-5 3-8 8-8h20c5 0 8 3 8 8v12c0 5-3 8-8 8H30l-8 7v-7h-.5c-4.5 0-7.5-3-7.5-8z" fill="#fff" opacity=".18"/><path d="M25 28l5 5 10-10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -72,7 +72,7 @@ const ui = {
   boardView: loadJSON('dailyscrum.boardview.v1', 'cards') === 'sheet' ? 'sheet' : 'cards',
   memberSearch: '', editingNote: null, ticketExpansion: new Map(), ticketFilters: new Map(), sprintCollapsed: new Set(),
   view: 'today', date: todayISO(), month: todayISO().slice(0, 7),
-  statusPick: '', todayFilter: '', settingsTab: '', team: '',
+  statusPick: '', todayFilter: '', attMenu: null, settingsTab: '', team: '',
   sprintMode: loadJSON('dailyscrum.sprintMode.v1', 'board') === 'list' ? 'list' : 'board',
   sprintDoneOpen: new Set(), sprintMapOpen: false, histMonth: '', histSel: '', jiraDraft: null,
 };
@@ -185,6 +185,7 @@ async function onNavigationPop() {
   closeModal();
   closeConfirm(false);
   closeOwnKeyModal();
+  ui.attMenu = null; // an open status menu belongs to the page being left
   restoreNavigationUrl();
   render();
   if (ui.view === 'settings' && canAdmin()) { await refreshUsers(); render(); }

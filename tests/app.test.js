@@ -503,6 +503,34 @@ function todayBoard(context, entries) {
   `, context);
 }
 
+test('Today downloads attendance, notes and matched tickets as an Excel workbook', () => {
+  const { context } = appContext();
+  todayBoard(context, { m1: { attendance: 'late', yesterday: 'Reviewed code', today: 'Build API', blockers: 'Waiting on access' } });
+  vm.runInContext(`state.days[ui.date].jira = { sprint: { name: 'Sprint 14' }, issues: [
+    { key: 'S-1', summary: 'Build API', status: 'In Progress', priority: 'High', url: 'https://team.atlassian.net/browse/S-1', assignee: { name: 'Ana' } },
+    { key: 'S-2', summary: 'No owner', status: 'To Do', assignee: null }
+  ] }`, context);
+  const sheets = JSON.parse(vm.runInContext('JSON.stringify(dayReportSheets(ui.date))', context));
+  assert.deepEqual(sheets.map((sheet) => sheet.name), ['Daily standup', 'Sprint tickets']);
+  const ana = sheets[0].rows.find((row) => row[0] && row[0].v === 'Ana');
+  assert.deepEqual(ana.map((cell) => cell.v), ['Ana', '', 'Late', 'Reviewed code', 'Build API', 'Waiting on access', 1]);
+  assert.equal(sheets[1].rows.length, 2);
+  assert.equal(sheets[1].rows[1][1].v, 'S-1');
+  assert.equal(sheets[1].rows[1][1].link, 'https://team.atlassian.net/browse/S-1');
+
+  context.XlsxLite = require('../public/xlsx.js');
+  context.Blob = Blob;
+  let exportedBlob;
+  let filename;
+  context.URL = { createObjectURL(blob) { exportedBlob = blob; return 'blob:standup'; }, revokeObjectURL() {} };
+  context.document.body.appendChild = () => {};
+  context.document.createElement = () => ({ click() { filename = this.download; }, remove() {} });
+  vm.runInContext('toast = () => {}; downloadReport(ui.date)', context);
+  assert.equal(filename, 'standup-report-' + vm.runInContext('ui.date', context) + '.xlsx');
+  assert.equal(exportedBlob.type, context.XlsxLite.MIME);
+  assert.ok(exportedBlob.size > 1000);
+});
+
 test('Today summary counts who is here, late, away, blocked and without an update', () => {
   const { context } = appContext();
   todayBoard(context, { m1: { blockers: 'API keys' }, m2: { attendance: 'late', blockers: '  ' }, m3: { attendance: 'leave' }, m4: { today: 'Plan' } });
@@ -536,26 +564,108 @@ test('a card with blockers is flagged and shows the blocker field first', () => 
   assert.doesNotMatch(plain, /has-blocker/);
 });
 
-test('the roll call shows everyone; editors click to cycle attendance, viewers only read it', () => {
+test('the roll call shows everyone with a status pill; editors open a menu and pick, viewers only read it', () => {
   const { context } = appContext();
   todayBoard(context, { m2: { attendance: 'late' } });
   const roll = () => { const h = vm.runInContext('viewToday()', context); return h.slice(h.indexOf('class="roll-call"'), h.indexOf('class="board-tools"')); };
   let html = roll();
-  for (const id of ['m1', 'm2', 'm3', 'm4']) assert.match(html, new RegExp(`data-action="cycle-att" data-id="${id}"`));
-  assert.match(html, /class="roll-person att-late" data-action="cycle-att" data-id="m2"/);
+  for (const id of ['m1', 'm2', 'm3', 'm4']) assert.match(html, new RegExp(`data-action="att-menu" data-id="${id}" data-src="roll" aria-haspopup="menu" aria-expanded="false"`));
+  assert.match(html, /class="roll-person att-late" data-action="att-menu" data-id="m2"/);
+  assert.match(html, /<span class="att-pill att-present">.*?Present<span class="att-caret"/);
+  assert.match(html, /Tap a status to change it/);
+  assert.doesNotMatch(html, /class="att-menu"/);
   assert.doesNotMatch(vm.runInContext('memberCard(state.members[1], state.days[ui.date])', context), /att-select|<select/);
-  vm.runInContext("clickActions['cycle-att']({ dataset: { id: 'm2' } })", context);
-  assert.equal(vm.runInContext("state.days[ui.date].entries.m2.attendance", context), 'leave');
-  vm.runInContext("clickActions['cycle-att']({ dataset: { id: 'm1' } })", context);
-  assert.equal(vm.runInContext("state.days[ui.date].entries.m1.attendance", context), 'late');
-  vm.runInContext("state.days[ui.date].entries.m1.attendance = 'noshow'; clickActions['cycle-att']({ dataset: { id: 'm1' } })", context);
-  assert.equal(vm.runInContext("state.days[ui.date].entries.m1.attendance", context), 'present');
+
+  vm.runInContext("clickActions['att-menu']({ dataset: { id: 'm2', src: 'roll' } })", context);
+  html = roll();
+  assert.match(html, /data-id="m2" data-src="roll" aria-haspopup="menu" aria-expanded="true"/);
+  assert.equal((html.match(/class="att-menu"/g) || []).length, 1);
+  const menu = html.slice(html.indexOf('class="att-menu"'));
+  for (const k of ['present', 'late', 'leave', 'sick', 'noshow']) assert.match(menu, new RegExp(`data-att="${k}"`));
+  assert.match(menu, /aria-checked="true" tabindex="-1" data-action="att-set" data-id="m2" data-src="roll" data-att="late"/);
+
+  // one pick lands on the exact status: no cycling through the others
+  vm.runInContext("clickActions['att-set']({ dataset: { id: 'm2', src: 'roll', att: 'noshow' } })", context);
+  assert.equal(vm.runInContext("state.days[ui.date].entries.m2.attendance", context), 'noshow');
+  assert.equal(vm.runInContext('ui.attMenu', context), null);
+  assert.doesNotMatch(roll(), /class="att-menu"/);
+  vm.runInContext("clickActions['att-set']({ dataset: { id: 'm1', src: 'card', att: 'bogus' } })", context);
+  assert.equal(vm.runInContext("state.days[ui.date].entries.m1", context), undefined);
+  assert.equal(vm.runInContext("typeof clickActions['cycle-att']", context), 'undefined');
+
   vm.runInContext("auth.role = 'viewer'", context);
   html = roll();
-  assert.doesNotMatch(html, /data-action="cycle-att"/);
+  assert.doesNotMatch(html, /data-action="att-menu"|Tap a status|att-caret/);
   assert.match(html, /<span class="roll-person att-present"/);
-  vm.runInContext("clickActions['cycle-att']({ dataset: { id: 'm1' } })", context);
-  assert.equal(vm.runInContext("state.days[ui.date].entries.m1.attendance", context), 'present');
+  vm.runInContext("clickActions['att-menu']({ dataset: { id: 'm1', src: 'roll' } }); clickActions['att-set']({ dataset: { id: 'm1', src: 'roll', att: 'sick' } })", context);
+  assert.equal(vm.runInContext('ui.attMenu', context), null);
+  assert.equal(vm.runInContext("state.days[ui.date].entries.m1", context), undefined);
+});
+
+test('every card shows its status pill, Present included, and opens its own menu', () => {
+  const { context } = appContext();
+  todayBoard(context, { m2: { attendance: 'late' } });
+  const card = (i) => vm.runInContext(`memberCard(state.members[${i}], state.days[ui.date])`, context);
+  assert.match(card(0), /data-action="att-menu" data-id="m1" data-src="card"[^>]*><span class="att-pill att-present">/);
+  assert.match(card(1), /<span class="att-pill att-late">/);
+  vm.runInContext("clickActions['att-menu']({ dataset: { id: 'm1', src: 'card' } })", context);
+  assert.match(card(0), /class="att-menu" role="menu"/);
+  const html = vm.runInContext('viewToday()', context);
+  assert.doesNotMatch(html.slice(html.indexOf('class="roll-call"'), html.indexOf('class="board-tools"')), /class="att-menu"/);
+  vm.runInContext("clickActions['att-menu']({ dataset: { id: 'm1', src: 'card' } })", context);
+  assert.equal(vm.runInContext('ui.attMenu', context), null);
+  vm.runInContext("auth.role = 'viewer'", context);
+  assert.match(card(0), /<span class="att-pick" title="Attending the opening"><span class="att-pill att-present">/);
+  assert.doesNotMatch(card(0), /data-action="att-menu"/);
+});
+
+test('an open attendance menu is forgotten once its pill leaves the page', () => {
+  const { context } = appContext();
+  todayBoard(context, {});
+  vm.runInContext("clickActions['att-menu']({ dataset: { id: 'm1', src: 'card' } })", context);
+  vm.runInContext('render()', context);
+  assert.deepEqual(JSON.parse(vm.runInContext('JSON.stringify(ui.attMenu)', context)), { id: 'm1', src: 'card' });
+  // another view without a click (Back, a live update) drops it, so returning to Today shows it closed
+  vm.runInContext("ui.view = 'history'; render(); ui.view = 'today'; render()", context);
+  assert.equal(vm.runInContext('ui.attMenu', context), null);
+  assert.doesNotMatch(vm.runInContext('viewToday()', context), /class="att-menu"/);
+  // a live update that removes the member drops it too
+  vm.runInContext("clickActions['att-menu']({ dataset: { id: 'm1', src: 'card' } }); state.members = state.members.filter((m) => m.id !== 'm1'); render()", context);
+  assert.equal(vm.runInContext('ui.attMenu', context), null);
+});
+
+test('the attendance menu keys: arrows move, a letter picks, Escape closes back to the pill', () => {
+  const { context } = appContext();
+  todayBoard(context, {});
+  const run = (code) => JSON.parse(vm.runInContext(`JSON.stringify(${code})`, context));
+  vm.runInContext(`
+    var focused = null;
+    var items = ['present', 'late', 'leave', 'sick', 'noshow'].map((att) => ({ dataset: { id: 'm1', src: 'card', att }, focus() { focused = this; } }));
+    var trigger = { focus() { focused = this; }, setAttribute(k, v) { this[k] = v; } };
+    var menuNode = { contains: (el) => items.includes(el), querySelectorAll: () => items, remove() { this.removed = true; } };
+    var origQS = document.querySelector, origQSA = document.querySelectorAll;
+    document.querySelector = (sel) => sel === '.att-menu' ? (ui.attMenu ? menuNode : null)
+      : sel.startsWith('[data-action="att-menu"]') ? trigger : origQS(sel);
+    document.querySelectorAll = (sel) => sel === '.att-menu' ? [menuNode] : origQSA(sel);
+    Object.defineProperty(document, 'activeElement', { get: () => focused, configurable: true });
+    var key = (k, extra) => { const ev = Object.assign({ key: k, prevented: false, preventDefault() { this.prevented = true; } }, extra); return [handleAttMenuKey(ev), ev.prevented]; };
+    ui.attMenu = { id: 'm1', src: 'card' }; focused = items[0];
+  `, context);
+  assert.deepEqual(run("[...key('ArrowUp'), focused.dataset.att]"), [true, true, 'noshow']);
+  assert.deepEqual(run("[...key('ArrowDown'), focused.dataset.att]"), [true, true, 'present']);
+  assert.deepEqual(run("[...key('End'), focused.dataset.att]"), [true, true, 'noshow']);
+  assert.deepEqual(run("key('v', { ctrlKey: true })"), [false, false]);
+  assert.deepEqual(run("key('x')"), [false, false]);
+  assert.deepEqual(run("key('Escape')"), [true, true]);
+  assert.equal(vm.runInContext('ui.attMenu', context), null);
+  assert.equal(vm.runInContext('focused === trigger && trigger["aria-expanded"]', context), 'false');
+  assert.equal(vm.runInContext('menuNode.removed', context), true);
+  vm.runInContext("ui.attMenu = { id: 'm1', src: 'card' }; focused = items[0]", context);
+  assert.deepEqual(run("key('V')"), [true, true]);
+  assert.equal(vm.runInContext("state.days[ui.date].entries.m1.attendance", context), 'leave');
+  assert.equal(vm.runInContext('ui.attMenu', context), null);
+  vm.runInContext("ui.attMenu = { id: 'm1', src: 'card' }; focused = null", context);
+  assert.deepEqual(run("key('Escape')"), [false, false]);
 });
 
 test('away members without notes appear only in the roll call; with notes they keep a card', () => {
@@ -585,7 +695,7 @@ test('the sheet view shows one row per person, away members included, and rememb
   assert.match(html, /<tr class="sheet-row att-leave is-away" data-member="m3"/);
   assert.match(html, /Fixed &lt;b&gt;login&lt;\/b&gt;/);
   assert.match(html, /<b>3<\/b>\/4 here/);
-  assert.match(html, /class="sheet-att att-leave" data-action="cycle-att" data-id="m3"/);
+  assert.match(html, /<button type="button" class="att-trigger" data-action="att-menu" data-id="m3" data-src="sheet"[^>]*><span class="att-pill att-leave">/);
   assert.equal(storage.get('dailyscrum.boardview.v1'), '"sheet"');
 });
 
@@ -602,8 +712,8 @@ test('the sheet view keeps filters, edits notes in place and is read-only for vi
   assert.match(vm.runInContext('viewToday()', context), /<textarea data-entry[^>]*data-member="m2" data-field="today"/);
   vm.runInContext("ui.editingNote = null; auth.role = 'viewer'", context);
   html = vm.runInContext('viewToday()', context);
-  assert.doesNotMatch(html, /<textarea|data-action="edit-note"|data-action="cycle-att"/);
-  assert.match(html, /<span class="sheet-att att-present"/);
+  assert.doesNotMatch(html, /<textarea|data-action="edit-note"|data-action="att-menu"/);
+  assert.match(html, /<span class="att-pick" title="[^"]*"><span class="att-pill att-present">/);
 });
 
 test('the blockers filter shows only blocked members and can be cleared', () => {
@@ -1270,6 +1380,27 @@ test('ticket summaries and filters use JIRA categories, preserving member notes 
   assert.match(card(), /No sprint tickets matched/);
 });
 
+test('Today sprint tickets show To Do, Untested, other active statuses, then Done', () => {
+  const { context } = appContext();
+  todayBoard(context, {});
+  const ticket = (key, status, statusCategory) => ({ key, summary: key, status, statusCategory });
+  context.todayTickets = [
+    ticket('T-DONE', 'Done', 'done'),
+    ticket('T-TESTING', 'Testing', 'indeterminate'),
+    ticket('T-UNTESTED', 'Untested', 'indeterminate'),
+    ticket('T-TODO', 'To Do', 'new'),
+    ticket('T-PROGRESS', 'In Progress', 'indeterminate'),
+  ];
+  const list = () => vm.runInContext("memberTicketsHtml(state.members[0], todayTickets, 'today-order')", context);
+  const keys = (html) => [...html.matchAll(/class="key"[^>]*>(T-[A-Z]+)\s*</g)].map((match) => match[1]);
+  assert.deepEqual(keys(list()), ['T-TODO', 'T-UNTESTED', 'T-TESTING', 'T-PROGRESS', 'T-DONE']);
+  assert.deepEqual(context.todayTickets.map((item) => item.key), ['T-DONE', 'T-TESTING', 'T-UNTESTED', 'T-TODO', 'T-PROGRESS']);
+  vm.runInContext("ui.ticketFilters.set('today-order', 'active')", context);
+  assert.deepEqual(keys(list()), ['T-TODO', 'T-UNTESTED', 'T-TESTING', 'T-PROGRESS']);
+  vm.runInContext("ui.ticketFilters.set('today-order', 'done')", context);
+  assert.deepEqual(keys(list()), ['T-DONE']);
+});
+
 test('sprint tickets start collapsed in compact view and expanded otherwise', () => {
   const { context } = appContext();
   todayBoard(context, { m1: { today: 'Plan' } });
@@ -1312,6 +1443,31 @@ test('Sprint board expands done tickets and remembers the List layout', () => {
   assert.equal(vm.runInContext('ui.sprintMode', context), 'list');
   assert.equal(storage.get('dailyscrum.sprintMode.v1'), '"list"');
   assert.match(board(), /class="panel sprint-member"/);
+});
+
+test('Sprint shows member tickets only, with To do before In progress and Done', () => {
+  const { context } = appContext();
+  todayBoard(context, {});
+  context.sprintIssues = [
+    { key: 'S-TODO', summary: 'Plan', status: 'To Do', statusCategory: 'new', assignee: { name: 'Ana' } },
+    { key: 'S-PROG', summary: 'Build', status: 'In Progress', statusCategory: 'indeterminate', assignee: { name: 'Ana' } },
+    { key: 'S-DONE', summary: 'Ship', status: 'Done', statusCategory: 'done', assignee: { name: 'Ana' } },
+    { key: 'S-UNASSIGNED', summary: 'No owner', statusCategory: 'new', assignee: null },
+    { key: 'S-OTHER', summary: 'Outside team', statusCategory: 'new', assignee: { name: 'Outsider' } },
+  ];
+  vm.runInContext(`ui.view = 'sprint'; state.days[ui.date].jira = {
+    syncedAt: '2026-10-07T08:00:00Z', sprint: { name: 'Sprint 14' }, issues: sprintIssues
+  }`, context);
+  const board = vm.runInContext('viewSprint()', context);
+  assert.match(board, /<span>Member<\/span><span>To do<\/span><span class="sb-h-prog">In progress<\/span><span class="sb-h-done">Done<\/span>/);
+  assert.match(board, /S-TODO/);
+  assert.match(board, /S-PROG/);
+  assert.ok(board.indexOf('S-TODO') < board.indexOf('S-PROG'));
+  assert.match(board, /<b>3<\/b> tickets/);
+  assert.doesNotMatch(board, /S-UNASSIGNED|S-OTHER|class="sb-none"/);
+  const list = vm.runInContext("ui.sprintMode = 'list'; viewSprint()", context);
+  assert.ok(list.indexOf('To do · 1') < list.indexOf('In progress · 1'));
+  assert.doesNotMatch(list, /S-UNASSIGNED|S-OTHER/);
 });
 
 test('History calendar opens a selected day with its attendance and blocker detail', () => {

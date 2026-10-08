@@ -380,14 +380,23 @@ const clickActions = {
   'hist-month': (el) => { ui.histMonth = shiftMonth(ui.histMonth || todayISO().slice(0, 7), Number(el.dataset.dir) || 0); ui.histSel = ''; render(); },
   'hist-select': (el) => { ui.histSel = el.dataset.date; render(); },
   'hist-open': (el) => { ui.view = 'history'; ui.histMonth = el.dataset.date.slice(0, 7); ui.histSel = el.dataset.date; render(); },
-  'cycle-att': (el) => {
+  'att-menu': (el) => {
     if (!canEdit()) return;
-    const id = el.dataset.id;
-    const keys = Object.keys(ATT);
-    const cur = entryOf(state.days[ui.date], id).attendance || 'present';
-    setAttendance(id, keys[(keys.indexOf(cur) + 1) % keys.length]);
-    const again = document.querySelector('[data-action="cycle-att"][data-id="' + CSS.escape(id) + '"]');
-    if (again) again.focus({ preventScroll: true });
+    const { id, src } = el.dataset;
+    if (attMenuOpen(id, src)) { closeAttMenu(true); return; }
+    ui.attMenu = { id, src };
+    render();
+    const current = $('.att-menu [aria-checked="true"]');
+    if (current) current.focus({ preventScroll: true });
+  },
+  'att-set': (el) => {
+    const { id, src, att } = el.dataset;
+    if (!canEdit() || !ATT[att]) return;
+    ui.attMenu = null;
+    setAttendance(id, att);
+    // an away member without notes loses their card, so fall back to their roll-call pill
+    const trigger = attTrigger(id, src) || attTrigger(id, 'roll');
+    if (trigger) trigger.focus({ preventScroll: true });
   },
   'today-filter': (el) => { ui.todayFilter = ui.todayFilter === el.dataset.filter ? '' : el.dataset.filter; render(); },
   'add-member': () => openMemberModal(null),
@@ -460,7 +469,42 @@ function positionDropdown(menu) {
   panel.style.transform = `translateX(${shift}px)`;
 }
 
+const attTrigger = (id, src) => $(`[data-action="att-menu"][data-id="${CSS.escape(id)}"][data-src="${src}"]`);
+
+/** Closes the attendance menu without a re-render; focus returns to its pill when asked. */
+function closeAttMenu(refocus) {
+  const open = ui.attMenu;
+  if (!open) return;
+  ui.attMenu = null;
+  $$('.att-menu').forEach((n) => n.remove());
+  const trigger = attTrigger(open.id, open.src);
+  if (!trigger) return;
+  trigger.setAttribute('aria-expanded', 'false');
+  if (refocus) trigger.focus({ preventScroll: true });
+}
+
+/** Arrows move through the open attendance menu, a status letter picks it, Escape and Tab close it. */
+function handleAttMenuKey(e) {
+  const menu = $('.att-menu');
+  if (!menu || !menu.contains(document.activeElement)) return false;
+  const items = $$('[role="menuitemradio"]', menu);
+  const at = items.indexOf(document.activeElement);
+  const step = { ArrowDown: 1, ArrowUp: -1 }[e.key];
+  if (e.key === 'Escape') { e.preventDefault(); closeAttMenu(true); return true; }
+  // focus moves back to the pill first, so Tab carries on from there
+  if (e.key === 'Tab') { closeAttMenu(true); return true; }
+  if (step) { e.preventDefault(); items[(at + step + items.length) % items.length].focus(); return true; }
+  if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); items[e.key === 'Home' ? 0 : items.length - 1].focus(); return true; }
+  if (e.ctrlKey || e.metaKey || e.altKey) return false;
+  const pick = items.find((b) => ATT[b.dataset.att].key === e.key.toLowerCase());
+  if (!pick) return false;
+  e.preventDefault();
+  clickActions['att-set'](pick);
+  return true;
+}
+
 function onDocClick(e) {
+  if (ui.attMenu && !e.target.closest('.att-pick')) closeAttMenu(false);
   $$('.nav-dropdown[open]').forEach((menu) => {
     if (!menu.contains(e.target)) menu.open = false;
     else if (e.target.closest('[data-action]')) {
@@ -612,7 +656,8 @@ function init() {
   $('#overlay').addEventListener('click', (e) => { if (e.target.id === 'overlay') closeModal(); });
   $('#confirmOverlay').addEventListener('click', (e) => { if (e.target.id === 'confirmOverlay') closeConfirm(false); });
   window.addEventListener('popstate', onNavigationPop);
-  window.addEventListener('resize', () => $$('.nav-dropdown[open]').forEach(positionDropdown));
+  window.addEventListener('resize', () => { $$('.nav-dropdown[open]').forEach(positionDropdown); positionAttMenu(); });
+  document.addEventListener('scroll', () => { if (ui.attMenu) positionAttMenu(); }, { capture: true, passive: true });
   document.addEventListener('toggle', (e) => {
     if (e.target.matches && e.target.matches('.nav-dropdown')) {
       if (e.target.open) positionDropdown(e.target);
@@ -641,6 +686,7 @@ function init() {
   initTips();
   document.addEventListener('keydown', (e) => {
     if (handleDialogKey(e)) return;
+    if (handleAttMenuKey(e)) return;
     if (e.key === 'Escape') {
       const menu = document.activeElement && document.activeElement.closest('.nav-dropdown[open]');
       $$('.nav-dropdown[open]').forEach((d) => { d.open = false; });

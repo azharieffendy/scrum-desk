@@ -14,7 +14,7 @@ a SQLite database, and JIRA Cloud integration — all in one Docker container.
   (To Do / In Progress / Done / your own statuses), grouped per member
 - **Auto-refresh on sign-in** — JIRA data is refreshed automatically every time you log in
   (button available too)
-- **Daily report** — copy formatted standup notes or download a day as a text report
+- **Daily report** — copy formatted standup notes or download a day as an Excel workbook
 - **History** — browse started days in a calendar, inspect attendance and blockers, then reopen or copy a day
 - **Reports** — one tab for monthly attendance, sprint delivery (KPI), and the Performance report
 - **Monthly attendance** — a colour-coded day-by-day grid with member totals and rates;
@@ -51,9 +51,10 @@ Click an image to open it at full size. Regenerate them with `python scripts/cap
   Compact view to keep every note editor open; this preference stays in your browser.
   Viewers always see plain, readable notes. Sprint tickets start collapsed in Compact
   view and expanded otherwise; switching the view resets any tickets you opened or closed.
-- **Sprint** opens in **Board** mode with a progress summary and per-member In progress,
-  To do and Done columns. Done tickets expand from their count. Switch to **List** for
+- **Sprint** opens in **Board** mode with a progress summary and per-member To do,
+  In progress and Done columns. Done tickets expand from their count. Switch to **List** for
   collapsible member sections; **Collapse all** / **Expand all** toggles them together.
+  Only tickets matched to a member of the selected team appear in the view and its totals.
 - **Find a member or role** filters the board, including the Away strip. Blocker and
   team filters still apply. On Today, open or close a member's **Sprint tickets** panel;
   your choice stays in place while using the page. Each ticket key opens JIRA in a new tab.
@@ -289,7 +290,7 @@ Only JIRA Cloud sites (`*.atlassian.net`) are accepted.
    future days cannot be started.
 3. Mark attendance chips per member (Present / Late / Leave / Sick / No show).
 4. Type what each person did yesterday / is doing today / blockers.
-5. **Copy standup notes** (or **Report** to download) → paste anywhere.
+5. **Copy standup notes** to paste anywhere, or use **Download Excel report** for a workbook.
 
 Mistakes are easy to take back: removing a member, cancelling a standup and deleting a
 day each show an **Undo** button for a few seconds. Actions that cannot be undone
