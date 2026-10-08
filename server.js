@@ -445,9 +445,11 @@ async function handleKpiRoute(req, res, user, url) {
 
 async function handlePiRoute(req, res, user, url) {
   const lead = scope.isLead(user);
+  if (lead && ['/api/pi/test', '/api/pi/options'].includes(url.pathname)) return sendJson(res, 403, { error: 'Only admins can edit report queries.' });
+  const body = req.method === 'POST' ? await readJson(req) : null;
   const out = await piService.handleRequest({
     method: req.method, path: url.pathname, period: url.searchParams.get('period'),
-    person: url.searchParams.get('person') || '',
+    person: url.searchParams.get('person') || '', body,
     admin: isAdmin(user) || lead, memberId: user.memberId || '',
     team: lead ? scope.scopedMemberIds(db.loadState().members, user) : null,
     creds: db.credsForUser(user),
@@ -507,7 +509,7 @@ async function route(req, res) {
   if (url.pathname === '/api/state') return handleState(req, res, user);
   if (url.pathname === '/api/jira') return handleJiraRoute(req, res, user);
   if (['/api/kpi', '/api/kpi/refresh', '/api/kpi/fields'].includes(url.pathname)) return handleKpiRoute(req, res, user, url);
-  if (['/api/pi', '/api/pi/preview'].includes(url.pathname)) return handlePiRoute(req, res, user, url);
+  if (['/api/pi', '/api/pi/preview', '/api/pi/test', '/api/pi/options'].includes(url.pathname)) return handlePiRoute(req, res, user, url);
   if (url.pathname === '/api/status-colors') return handleStatusColorsRoute(req, res, user);
   if (url.pathname === '/api/events') {
     if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed.' });

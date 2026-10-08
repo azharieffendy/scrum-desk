@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 // The UI scripts in index.html load order. Each runs as its own script in
 // one shared context, like the browser; init() is left out.
-const sources = ['theme.js', 'monthly-report.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-report.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
+const sources = ['theme.js', 'monthly-report.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-query.js', 'pi-report.js', 'pi-editor.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
   fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8').replace(/\ninit\(\);\s*$/, '\n'));
 
 function appContext(fetchImpl = async () => { throw new Error('unexpected fetch'); }) {
@@ -999,21 +999,25 @@ test('picking a member in the KPI task filter does not re-render the page', () =
   assert.equal(vm.runInContext('renders', context), 0);
 });
 
-test('Settings → Performance report shows the default query and saves only valid templates', () => {
+test('Settings → Performance report keeps a draft and saves only on explicit save', async () => {
   const { context } = appContext();
   const page = settingsPage(context, 'admin');
-  vm.runInContext("ui.settingsTab = 'reports'; var saves = 0; saveState = () => { saves++; }; toast = () => {};", context);
+  vm.runInContext("ui.settingsTab = 'reports'; var saves = 0; saveState = () => { saves++; }; persistNow = async () => true; toast = () => {};", context);
   const html = page();
   assert.match(html, /statusCategory = Done/, 'default template pre-filled');
   assert.match(html, /TEAM - JIRA - /);
 
   const change = (setting, value) => vm.runInContext(
-    `onDocChange({ target: { id: '', value: ${JSON.stringify(value)}, dataset: { setting: '${setting}' } } })`, context);
+    `onDocChange({ target: { id: '${setting === 'piJql' ? 'piJql' : ''}', value: ${JSON.stringify(value)}, dataset: { setting: '${setting}' } } })`, context);
   change('piJql', 'project = X');
+  await vm.runInContext('piEditorSave()', context);
   assert.equal(vm.runInContext('saves', context), 0, 'missing placeholders: not saved');
   change('piJql', " assignee = '{assignee}' AND resolved >= '{start}' AND resolved <= '{end}' ");
+  assert.equal(vm.runInContext('saves', context), 0, 'typing never saves');
+  await vm.runInContext('piEditorSave()', context);
   assert.equal(vm.runInContext('state.settings.piJql', context), "assignee = '{assignee}' AND resolved >= '{start}' AND resolved <= '{end}'");
   change('piJql', vm.runInContext('PI_DEFAULT_TEMPLATE', context));
+  await vm.runInContext('piEditorSave()', context);
   assert.equal(vm.runInContext('state.settings.piJql', context), '', 'the default is stored as empty');
   change('piPrefix', ' DEMO ');
   assert.equal(vm.runInContext('state.settings.piPrefix', context), 'DEMO');
@@ -1023,7 +1027,7 @@ test('Settings → Performance report shows the default query and saves only val
 test('Settings → Performance report sets the period length; the report page then steps through periods of that length', () => {
   const { context } = appContext();
   const page = settingsPage(context, 'admin');
-  vm.runInContext("ui.settingsTab = 'reports'; var saves = 0; saveState = () => { saves++; }; toast = () => {}; render = () => {};", context);
+  vm.runInContext("ui.settingsTab = 'reports'; var saves = 0; saveState = () => { saves++; }; persistNow = async () => true; toast = () => {}; render = () => {};", context);
   let html = page();
   assert.match(html, /<h3>Performance report<\/h3>/);
   assert.match(html, /<option value="4" selected>4 months \(Jan – Apr, May – Aug, Sep – Dec\)<\/option>/, 'never set = 4 months');
@@ -1544,4 +1548,22 @@ test('navigation canonicalizes on boot and Back without growing history on ordin
   assert.equal(vm.runInContext('ui.view', context), 'report');
   assert.equal(vm.runInContext('ui.month', context), '2026-08');
   assert.deepEqual(calls, ['replaceState', 'pushState']);
+});
+
+test('Performance draft test ignores a response for a draft edited while JIRA was running', async () => {
+  const { context } = appContext();
+  todayBoard(context, {});
+  vm.runInContext(`render = () => {}; piEditorUi.draft = PI_DEFAULT_TEMPLATE; piEditorUi.base = PI_DEFAULT_TEMPLATE;
+    piEditorUi.member = 'm1'; piEditorUi.period = '2026-P2';
+    var resolvePiTest; kpiFetch = () => new Promise(resolve => { resolvePiTest = resolve; });`, context);
+  const pending = vm.runInContext('piEditorTest()', context);
+  vm.runInContext(`piEditorSet(PI_DEFAULT_TEMPLATE + ' '); resolvePiTest({count:70,person:'Ana',period:'2026-P2'});`, context);
+  await pending;
+  assert.equal(vm.runInContext('piEditorUi.result', context), null);
+  assert.equal(vm.runInContext('piEditorUi.testing', context), false);
+});
+test('Performance membership includes selected KPI people plus the linked member', () => {
+  const { context } = appContext(); todayBoard(context, {});
+  vm.runInContext("state.settings.kpiMembers = ['m1']; auth.memberId = 'm2'",context);
+  assert.equal(vm.runInContext("piMemberList().map(m=>m.id).join(',')",context),'m1,m2');
 });

@@ -427,81 +427,20 @@ function downloadPiXlsx() {
 
 /* ---------------- Settings → Performance report and Account ---------------- */
 
-const piPreviewUi = { memberId: '', result: null, error: null };
-
-function reportsPanel() {
-  const tpl = state.settings.piJql || PI_DEFAULT_TEMPLATE;
-  const months = piPeriodMonths();
-  const period = piCurrentPeriod();
-  const lengths = PI_PERIODS.LENGTHS.map((n) => `<option value="${n}"${n === months ? ' selected' : ''}>${esc(PI_PERIODS.lengthLabel(n))}</option>`).join('');
-  const options = state.members.map((m) => `<option value="${esc(m.id)}"${m.id === piPreviewUi.memberId ? ' selected' : ''}>${esc(m.name)}</option>`).join('');
-  const out = piPreviewUi.error
-    ? `<p class="pi-error">${esc(piPreviewUi.error)}</p>`
-    : piPreviewUi.result ? `<pre class="pi-jql">${esc(piPreviewUi.result.jql)}</pre>` : '';
-  return `
-  <section class="panel">
-    <h3>Performance report</h3>
-    <label class="field"><span>Period length</span>
-      <select id="piPeriodMonths" data-setting="piPeriodMonths">${lengths}</select></label>
-    <p class="panel-sub">The year is split into periods of this length, starting in January; the report page steps through them. Saved results of each period are kept, so switching back loses nothing.</p>
-    <p class="panel-sub">The Performance report tab runs this query once per person for the chosen period.
-      <code>{assignee}</code> becomes the person's JIRA account (or email), <code>{start}</code> the first day, <code>{end}</code> the final day: <code>&lt;= '{end}'</code> always includes the whole final day, also for date-time fields such as resolutionDate. <code>{afterEnd}</code> is the day after the period, if you prefer <code>&lt; '{afterEnd}'</code>. People: the members ticked in Settings → Sprint delivery (KPI), plus you.</p>
-    <label class="field"><span>Query template (JQL)</span>
-      <textarea id="piJql" data-setting="piJql" rows="7" spellcheck="false" class="pi-template">${esc(tpl)}</textarea></label>
-    <div class="row-gap">
-      <button class="linklike" data-action="pi-reset-jql" style="font-size:12.5px">reset to default</button>
-    </div>
-    <label class="field"><span>File name prefix</span>
-      <input data-setting="piPrefix" placeholder="TEAM" maxlength="40" value="${esc(state.settings.piPrefix || '')}" autocomplete="off"></label>
-    <p class="panel-sub">Download name: <b>${esc((state.settings.piPrefix || PI_DEFAULT_PREFIX) + ' - JIRA - ' + piPeriodWords(period) + '.xlsx')}</b></p>
-  </section>
-  <section class="panel">
-    <h3>Preview the query</h3>
-    <p class="panel-sub">Shows the saved query filled in for one person and ${esc(piLabel(period))} — paste it into JIRA's issue search to check the count.</p>
-    <label class="field"><span>Team member</span>
-      <select id="piPreviewMember"><option value="">Choose a member…</option>${options}</select></label>
-    <div class="row-gap">
-      <button class="btn btn-ghost btn-sm" data-action="pi-preview">Preview JQL</button>
-    </div>
-    ${out}
-  </section>`;
-}
+function reportsPanel() { return piEditorPanel(); }
 
 /** e.g. 2026-P2 → 'MAY AUGUST 2026' (same words as periodName on the server). */
 function piPeriodWords(period) {
   return PI_PERIODS.words(period) + ' ' + period.slice(0, 4);
 }
 
-function savePiTemplate(el) {
-  const err = piTemplateError(el.value);
-  if (err) { toast(err + ' Not saved.', 'error'); return; }
-  state.settings.piJql = piTemplateToSave(el.value);
-  piPreviewUi.result = null;
-  saveState({ quiet: true });
-}
-
 function resetPiTemplate() {
-  state.settings.piJql = '';
-  piPreviewUi.result = null;
-  saveState({ quiet: true });
-  render();
-  toast('Report query reset to default');
-}
-
-async function previewPiJql() {
-  const sel = document.getElementById('piPreviewMember');
-  piPreviewUi.memberId = sel ? sel.value : '';
-  if (!piPreviewUi.memberId) { toast('Choose a team member first', 'error'); return; }
-  piPreviewUi.result = null;
-  piPreviewUi.error = null;
-  try {
-    piPreviewUi.result = await kpiFetch('/api/pi/preview?person=' + encodeURIComponent(piPreviewUi.memberId) +
-      '&period=' + encodeURIComponent(piCurrentPeriod()));
-  } catch (e) {
-    piPreviewUi.error = e.message;
-  }
+  piEditorUi.mode = 'builder';
+  piEditorUi.rules = PiQuery.parse(PI_DEFAULT_TEMPLATE);
+  piEditorSet(PI_DEFAULT_TEMPLATE);
   render();
 }
+async function previewPiJql() { return piEditorTest(); }
 
 /** Account: which team member this sign-in is (adds you to the Performance report). */
 function piMeField() {

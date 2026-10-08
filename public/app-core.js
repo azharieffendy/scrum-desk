@@ -234,13 +234,14 @@ function saveStatus(message) {
 }
 
 function renderSaveStatus() {
+  if (typeof piEditorFeedback === 'function' && piEditorUi.draft !== null) piEditorFeedback();
   const hint = $('#saveHint');
   if (!hint) return;
   let message = !canEdit() ? 'View only' : saveMessage === 'All changes saved' && storageMode === 'local'
     ? 'Saved in this browser' : saveMessage;
   if (canEdit() && saveMessage === 'All changes saved' && storageMode === 'server' &&
       (persistTimer || persistSoon.pending() || persistQueued || saveInFlight)) message = 'Saving…';
-  if (jiraDraftDirty() && message !== 'Not saved') message = 'Unsaved changes';
+  if ((jiraDraftDirty() || (typeof piDraftDirty === 'function' && piDraftDirty())) && message !== 'Not saved') message = 'Unsaved changes';
   if (hint.textContent !== message) hint.textContent = message;
   if (message === 'Not saved') hint.classList.add('save-error'); else hint.classList.remove('save-error');
   if (message === 'Unsaved changes' || message === 'Saving…') hint.classList.add('save-pending'); else hint.classList.remove('save-pending');
