@@ -356,6 +356,9 @@ const clickActions = {
   'kpi-download': () => downloadKpiXlsx(),
   'kpi-reload': () => { kpiUi.error = null; render(); },
   'kpi-month': (el) => { ui.month = el.dataset.month; render(); },
+  'kpi-trend-count': (el) => { kpiUi.trendCount = Number(el.dataset.count) || 0; render(); },
+  'kpi-trend-mode': (el) => { kpiUi.trendMode = el.dataset.mode === 'recent' ? 'recent' : 'month'; render(); },
+  'kpi-trend-retry': () => { kpiUi.trend.error = null; render(); }, // the panel reloads it
   'kpi-member': (el) => { kpiUi.memberKey = kpiUi.memberKey === el.dataset.key ? '' : el.dataset.key; render(); },
   'kpi-outcome': (el) => { kpiUi.outcome = el.dataset.outcome || ''; render(); },
   'pi-sort': (el) => applyPiSort(el.dataset.sort),

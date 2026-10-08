@@ -1480,6 +1480,38 @@ button.sheet-note:hover { border-color: var(--line); background: var(--bg); }
 .kpi-tasks-head .kpi-filters { margin-left: auto; }
 .kt-who { display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; }
 .kpi-reason { font-size: 12px; margin-top: 2px; }
+/* delivery trend across sprints */
+.kpi-trend { margin-bottom: 16px; }
+.kpi-trend-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.kpi-trend-head h3 { margin: 0; }
+.kpi-trend-sub { font-size: 13px; margin-right: auto; }
+.kpt-svg { width: 100%; height: auto; display: block; margin-top: 10px; }
+.kpt-grid { stroke: var(--line-soft); stroke-width: 1; }
+.kpt-grid-zero { stroke: var(--line); }
+.kpt-label { font: 11px var(--font-ui); fill: var(--muted); }
+.kpt-line { fill: none; stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+.kpt-line-done { stroke: var(--st-done); }
+.kpt-line-sp { stroke: var(--accent); stroke-width: 2; }
+.kpt-pt { stroke: var(--surface); stroke-width: 1.5; }
+.kpt-sp { fill: var(--accent); }
+.kpt-done { fill: var(--st-done); }
+.kpt-pt.kpt-open { fill: var(--surface); stroke-width: 2; }
+.kpt-sp.kpt-open { stroke: var(--accent); }
+.kpt-done.kpt-open { stroke: var(--st-done); }
+.kpt-dot { cursor: pointer; }
+.kpt-dot:hover .kpt-pt { stroke-width: 3; }
+.kpt-hit { fill: transparent; }
+.kpt-pt.kpt-hot { stroke: var(--ink); stroke-width: 2.5; }
+.kpt-msep { stroke: var(--line); stroke-dasharray: 2 4; }
+.kpt-mlabel { font: 10px var(--font-ui); fill: var(--muted); letter-spacing: .04em; }
+.kpi-trend-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px 16px; flex-wrap: wrap; margin-top: 4px; }
+.kpi-trend-legend { display: flex; gap: 16px; font-size: 12.5px; color: var(--muted); }
+.kpt-sw { display: inline-block; width: 10px; height: 10px; border-radius: 999px; margin-right: 6px; vertical-align: -1px; }
+.kpt-sw-done { background: var(--st-done); }
+.kpt-sw-sp { background: var(--accent); }
+.kpt-sw-open { background: var(--surface); border: 2px solid var(--muted); box-sizing: border-box; }
+.kpt-sw-hot { background: var(--surface); border: 2px solid var(--ink); box-sizing: border-box; }
+.kpi-trend-note { font-size: 12.5px; }
 
 /* performance tickets, inline under the row */
 .pi-inline { padding: 14px 18px 18px 64px; border-bottom: 1px solid var(--line); background: var(--surface); }

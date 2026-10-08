@@ -307,3 +307,38 @@ test('kpiRulesError mirrors the server checks', () => {
   assert.match(rulesApi.kpiRulesError('x'.repeat(61), true), /at most 60 characters/);
   assert.match(rulesApi.kpiRulesError(Array.from({ length: 11 }, (_, i) => 'S' + i).join(','), true), /at most 10/);
 });
+
+test('kpiTrendView windows the trend by month or takes the latest sprints', () => {
+  const sprint = (id, month, over) => Object.assign({
+    id, name: 'Sprint ' + id, state: 'closed', start: month + '-01T02:00:00.000Z', month,
+    done: 2, carryover: 1, open: 0, excluded: 0, spDone: 5, spCarryover: 3, spOpen: 0, completion: 2 / 3,
+  }, over);
+  const trend = { sprints: [
+    sprint(1, '2026-08'), sprint(2, '2026-08'), sprint(3, '2026-09', { state: 'active', open: 4, spOpen: 8, completion: null }),
+  ] };
+  const all = rulesApi.kpiTrendView(trend, { count: 0 });
+  assert.deepEqual(all.sprints.map((s) => s.id), [1, 2, 3], '0 charts everything');
+  assert.equal(all.total, 3);
+  assert.equal(all.windowed, false);
+  assert.equal(all.avgCompletion, 2 / 3);
+  const last = rulesApi.kpiTrendView(trend, { count: 2 });
+  assert.deepEqual(last.sprints.map((s) => s.id), [2, 3], 'the newest sprints are charted');
+  assert.equal(last.avgCompletion, 2 / 3, 'the active sprint has no completion and is left out of the average');
+  assert.equal(last.spDone, 10);
+  assert.equal(last.spCarryover, 6);
+  const uptoAug = rulesApi.kpiTrendView(trend, { count: 0, month: '2026-08' });
+  assert.deepEqual(uptoAug.sprints.map((s) => s.id), [1, 2], 'the pool stops at the selected month');
+  assert.equal(uptoAug.windowed, true);
+  assert.deepEqual([...uptoAug.monthIds], [1, 2], 'selected-month sprints are highlighted');
+  const recent = rulesApi.kpiTrendView(trend, { count: 0, month: '2026-08', mode: 'recent' });
+  assert.deepEqual(recent.sprints.map((s) => s.id), [1, 2, 3], 'recent mode ignores the month window');
+  assert.deepEqual([...recent.monthIds], [1, 2], 'the selected month stays ringed in recent mode too');
+  const before = rulesApi.kpiTrendView(trend, { count: 6, month: '2026-07' });
+  assert.deepEqual(before.sprints, [], 'a month before the data has an empty window');
+  assert.deepEqual([...before.monthIds], []);
+  const fallback = rulesApi.kpiTrendView(trend);
+  assert.deepEqual(fallback.sprints.map((s) => s.id), [1, 2, 3], 'no opts: everything fits in the default 12');
+  const none = rulesApi.kpiTrendView({ sprints: [] }, { count: 12 });
+  assert.equal(none.avgCompletion, null);
+  assert.equal(none.spDone, 0);
+});

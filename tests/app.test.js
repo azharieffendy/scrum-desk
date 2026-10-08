@@ -356,6 +356,20 @@ test('KPI tab failing to load shows the error once, not a fetch loop', async () 
   assert.equal(calls.length, 1);
 });
 
+test('a trend reset during a load starts a new load and drops the stale result', async () => {
+  const pending = [];
+  const { context } = appContext((url) => new Promise((resolve) => pending.push({ url, resolve })));
+  const reply = (i, tag) => pending[i].resolve({ ok: true, status: 200, json: async () => ({ tag, sprints: [] }) });
+  vm.runInContext(`loadKpiTrend(); resetKpiTrend(); loadKpiTrend();`, context);
+  assert.equal(pending.length, 2, 'the reset must not leave the trend stuck as loading');
+  reply(1, 'fresh');
+  reply(0, 'stale');
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+  assert.equal(vm.runInContext('kpiUi.trend.data && kpiUi.trend.data.tag', context), 'fresh');
+  assert.equal(vm.runInContext('kpiUi.trend.loading', context), false);
+});
+
 test('KPI tab in local mode says it needs the server', () => {
   const { context } = appContext();
   vm.runInContext(`storageMode = 'local'; ui.view = 'kpi'; render();`, context);

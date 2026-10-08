@@ -453,3 +453,65 @@ test('per role: the signature changes with the rules, roles, names, emails and m
   assert.notEqual(rolePlan(ROLE_SETTINGS, ROLE_MEMBERS, { u1: 'm1' }).signature, base, 'mapping');
   assert.notEqual(rolePlan({ ...ROLE_SETTINGS, roleRules: [{ role: 'QA', doneStatuses: ['In Testing'], doneCategory: true }] }).signature, base, 'rule');
 });
+
+/* ---------------- sprintTrend (delivery trend) ---------------- */
+
+const TREND_SPRINTS = [
+  { id: 201, name: 'Old', state: 'closed', start: '2026-08-03T02:00:00.000Z', end: '2026-08-14T02:00:00.000Z',
+    closedAt: '2026-08-14T02:00:00.000Z', month: '2026-08', computedAt: '2026-08-15T00:00:00.000Z' },
+  { id: 202, name: 'New', state: 'closed', start: '2026-09-01T02:00:00.000Z', end: '2026-09-12T02:00:00.000Z',
+    closedAt: '2026-09-12T02:00:00.000Z', month: '2026-09', computedAt: '2026-09-13T00:00:00.000Z' },
+  { id: 203, name: 'Active', state: 'active', start: '2026-09-21T02:00:00.000Z', end: null, closedAt: null,
+    month: '2026-09', computedAt: '2026-09-25T00:00:00.000Z' },
+  { id: 204, name: 'Never computed', state: 'closed', start: '2026-07-01T02:00:00.000Z', end: '2026-07-12T02:00:00.000Z',
+    closedAt: '2026-07-12T02:00:00.000Z', month: '2026-07', computedAt: null },
+];
+
+const TREND_TASKS = [
+  { sprintId: 201, outcome: 'done', points: 3 },
+  { sprintId: 201, outcome: 'done', points: 2 },
+  { sprintId: 201, outcome: 'carryover', points: 5 },
+  { sprintId: 201, outcome: 'excluded', points: 1 },
+  { sprintId: 202, outcome: 'open', points: 8 },
+  { sprintId: 202, outcome: 'done', points: 1.5 },
+  { sprintId: 203, outcome: 'done', points: 2 },
+  { sprintId: 203, outcome: 'open', points: 4 },
+  { sprintId: 999, outcome: 'done', points: 4 }, // no sprint row for it
+];
+
+test('sprintTrend: team totals per computed sprint, oldest first', () => {
+  const trend = kpi.sprintTrend(TREND_SPRINTS, TREND_TASKS);
+  assert.deepEqual(trend.map((s) => s.id), [201, 202, 203], 'sprints without a computed result are left out');
+  const old = trend[0];
+  assert.equal(old.done, 2);
+  assert.equal(old.carryover, 1);
+  assert.equal(old.excluded, 1);
+  assert.equal(old.spDone, 5);
+  assert.equal(old.spCarryover, 5);
+  assert.equal(old.completion, 2 / 3);
+  const fresh = trend[1];
+  assert.equal(fresh.done, 1);
+  assert.equal(fresh.open, 1);
+  assert.equal(fresh.spOpen, 8);
+  assert.equal(fresh.spDone, 1.5);
+  assert.equal(fresh.completion, 1, 'open tasks are left out of completion');
+  const active = trend[2];
+  assert.equal(active.done, 1);
+  assert.equal(active.open, 1);
+  assert.equal(active.completion, null, 'an active sprint has no completion even with delivered tasks, until it closes');
+});
+
+test('sprintTrend: a computed sprint with no tasks keeps a zero row; input order does not matter', () => {
+  const trend = kpi.sprintTrend(
+    [TREND_SPRINTS[1], TREND_SPRINTS[2], TREND_SPRINTS[0]],
+    [{ sprintId: 203, outcome: 'open', points: 2 }]);
+  assert.deepEqual(trend.map((s) => s.id), [201, 202, 203], 'ordered by start date');
+  const empty = trend.find((s) => s.id === 202);
+  assert.equal(empty.done + empty.carryover, 0);
+  assert.equal(empty.completion, null, 'nothing counted → no completion');
+});
+
+test('sprintTrend: empty inputs give an empty trend', () => {
+  assert.deepEqual(kpi.sprintTrend([], []), []);
+  assert.deepEqual(kpi.sprintTrend(null, null), []);
+});
