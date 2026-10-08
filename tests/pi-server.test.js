@@ -218,7 +218,7 @@ test('the saved template and prefix are used', async () => {
     piJql: "assignee = '{assignee}' AND resolved >= '{start}' AND resolved <= '{end}'", piPrefix: 'DEMO' } } });
   const r = (await get(service(), { period: '2026-P1' })).payload;
   assert.equal(r.prefix, 'DEMO');
-  assert.equal(searches[0].jql, "assignee = 'acc-1' AND resolved >= '2026-01-01' AND resolved <= '2026-04-30'");
+  assert.equal(searches[0].jql, "assignee = 'acc-1' AND resolved >= '2026-01-01' AND resolved < '2026-05-01'");
 });
 
 test('saving an invalid template is refused; prefix is cleaned', () => {
