@@ -445,7 +445,7 @@ function reportsPanel() {
       <select id="piPeriodMonths" data-setting="piPeriodMonths">${lengths}</select></label>
     <p class="panel-sub">The year is split into periods of this length, starting in January; the report page steps through them. Saved results of each period are kept, so switching back loses nothing.</p>
     <p class="panel-sub">The Performance report tab runs this query once per person for the chosen period.
-      <code>{assignee}</code> becomes the person's JIRA account (or email), <code>{start}</code> the first day. Use <code>{afterEnd}</code> for the exclusive day after the period, or <code>{end}</code> for its final day. Date-time fields such as resolutionDate should use <code>&lt; '{afterEnd}'</code> to include the full final day. People: the members ticked in Settings → Sprint delivery (KPI), plus you.</p>
+      <code>{assignee}</code> becomes the person's JIRA account (or email), <code>{start}</code> the first day, <code>{end}</code> the final day: <code>&lt;= '{end}'</code> always includes the whole final day, also for date-time fields such as resolutionDate. <code>{afterEnd}</code> is the day after the period, if you prefer <code>&lt; '{afterEnd}'</code>. People: the members ticked in Settings → Sprint delivery (KPI), plus you.</p>
     <label class="field"><span>Query template (JQL)</span>
       <textarea id="piJql" data-setting="piJql" rows="7" spellcheck="false" class="pi-template">${esc(tpl)}</textarea></label>
     <div class="row-gap">

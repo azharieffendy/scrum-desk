@@ -62,15 +62,37 @@ test('fillTemplate fills every occurrence and refuses unsafe users', () => {
   assert.throws(() => pi.fillTemplate('no placeholders', { assignee: 'u1', start: 's', end: 'e' }), /must contain/);
 });
 
-test('{afterEnd} is optional: a template without it is still valid and filled as before', () => {
+test('{afterEnd} is optional: a template with only {end} is valid and still covers the full last day', () => {
   const own = "assignee = '{assignee}' AND resolved >= '{start}' AND resolved <= '{end}'";
   assert.equal(pi.validateTemplate(own), '');
   assert.equal(pi.fillTemplate(own, { assignee: 'u1', ...pi.periodRange('2026-P2') }),
-    "assignee = 'u1' AND resolved >= '2026-05-01' AND resolved <= '2026-08-31'");
+    "assignee = 'u1' AND resolved >= '2026-05-01' AND resolved < '2026-09-01'");
   assert.equal(pi.fillTemplate("x < '{afterEnd}' {assignee}{start}{end}", { assignee: 'u1', ...pi.periodRange('2026-P3') }),
     "x < '2027-01-01' u12026-09-012026-12-31");
   assert.throws(() => pi.fillTemplate(pi.DEFAULT_TEMPLATE, { assignee: 'u1', start: '2026-05-01', end: '2026-08-31' }),
     /\{afterEnd\}/, 'a missing date is refused, not filled with junk');
+});
+
+test('{end} comparisons include the whole final day, for date and date-time fields alike', () => {
+  const range = pi.periodRange('2026-P2');
+  const fill = (t) => pi.fillTemplate(t, { assignee: 'u1', ...range });
+  // a date-time compared with <= '2026-08-31' would stop at 31 Aug 00:00
+  assert.equal(fill("{assignee} {start} resolutionDate <= '{end}'"), "u1 2026-05-01 resolutionDate < '2026-09-01'");
+  assert.equal(fill('{assignee} {start} "Start date[Date]" <= "{end}"'), 'u1 2026-05-01 "Start date[Date]" < "2026-09-01"');
+  assert.equal(fill('{assignee} {start} resolved<={end}'), 'u1 2026-05-01 resolved < 2026-09-01');
+  assert.equal(fill("{assignee} {start} resolved > '{end}'"), "u1 2026-05-01 resolved >= '2026-09-01'");
+  // other uses of {end} are left as written
+  assert.equal(fill("{assignee} {start} x < '{end}' y >= '{end}' z = '{end}'"),
+    "u1 2026-05-01 x < '2026-08-31' y >= '2026-08-31' z = '2026-08-31'");
+  // the user's two-group query: both halves cover 31 Aug fully
+  const two = "(assignee = '{assignee}' AND \"Start date[Date]\" >= '{start}' AND \"Start date[Date]\" <= '{end}')\n" +
+    "OR\n(assignee = '{assignee}' AND resolutionDate >= '{start}' AND resolutionDate <= '{end}')";
+  const jql = fill(two);
+  assert.equal(jql.split("< '2026-09-01'").length - 1, 2);
+  assert.ok(!jql.includes('<='));
+  // without an explicit afterEnd the next day is worked out from {end}
+  assert.equal(pi.fillTemplate("{assignee} {start} r <= '{end}'", { assignee: 'u1', start: '2028-02-01', end: '2028-02-29' }),
+    "u1 2028-02-01 r < '2028-03-01'");
 });
 
 test('toPiRow maps every column; missing time and points stay empty', () => {
