@@ -21,6 +21,9 @@ a SQLite database, and JIRA Cloud integration — all in one Docker container.
   **Download Excel** gives a .xlsx with Summary, Attendance and Daily detail sheets
   (viewers can use it too)
 - **Data survives everything** — SQLite database on a mounted volume; browsers can come and go
+- **Full encrypted backup & restore** — admins download one password-protected file with the
+  database, configuration and app files, and restore the database from it after a checked review
+  (see [Backup & restore](#backup--restore))
 - **Appearance** — a light palette and a black dark theme, switched from the header’s **Account** menu. The choice is saved per browser; new browsers follow the operating system theme.
 
 The interface uses Maven Pro for body text, Georgia for quotations, and Monaco for code where available. Display headings use Big Noodle Titling if it is installed on the viewing device, with Barlow Condensed as the web fallback.
@@ -30,7 +33,8 @@ The interface uses Maven Pro for body text, Georgia for quotations, and Monaco f
 These captures use generated demo members, example.test addresses and DEMO ticket keys. They were
 rendered from the app with intercepted requests; no real account, database or JIRA data was used.
 Click an image to open it at full size. Regenerate them with `python scripts/capture-ui-pages.py`
-(requires Python Playwright and Chrome or Playwright Chromium).
+(requires Python Playwright and Chrome or Playwright Chromium); add names such as `today` to
+capture only those.
 
 | Today | Sprint board |
 | --- | --- |
@@ -41,8 +45,8 @@ Click an image to open it at full size. Regenerate them with `python scripts/cap
 | [![Monthly attendance grid with demo data](docs/screenshots/attendance-report.png)](docs/screenshots/attendance-report.png) | [![Sprint delivery report with demo data](docs/screenshots/sprint-delivery-report.png)](docs/screenshots/sprint-delivery-report.png) |
 | Reports: Performance | Settings: Team members |
 | [![Performance report with demo data](docs/screenshots/performance-report.png)](docs/screenshots/performance-report.png) | [![Team settings with demo members](docs/screenshots/settings-team.png)](docs/screenshots/settings-team.png) |
-| Settings: JIRA connection | |
-| [![JIRA settings draft save bar with demo values](docs/screenshots/settings-jira.png)](docs/screenshots/settings-jira.png) | |
+| Settings: JIRA connection | Settings: Data & backup |
+| [![JIRA settings draft save bar with demo values](docs/screenshots/settings-jira.png)](docs/screenshots/settings-jira.png) | [![Full backup and restore review with a demo backup](docs/screenshots/settings-backup.png)](docs/screenshots/settings-backup.png) |
 
 ## Board controls
 
@@ -102,7 +106,61 @@ docker stop daily-scrum     # stop  (or: docker compose down)
 ```
 
 Data lives in `./data/daily-scrum.db` (SQLite). Stop the container and copy the
-`data` folder to back it up. In-app **Settings → Data & backup → Export backup** also works.
+`data` folder to back it up, or use a full backup from the app (below).
+
+The container restarts on its own after a crash, a reboot or a database restore
+(`restart: unless-stopped`); `docker stop` / `docker compose down` still stop it for good.
+
+### Backup & restore
+
+**Settings → Data & backup** (admins) has two kinds of backup:
+
+- **Export team data** — members, notes and history as JSON. No accounts, settings
+  or JIRA credentials.
+- **Full encrypted backup** — everything needed to bring the app back: the database
+  (accounts, settings, JIRA credentials, notes, team data, report history), the
+  configured environment values, the application and Docker files, version info,
+  checksums and a `RESTORE.txt`. It is encrypted on the server (AES-256-GCM, key from
+  your password through scrypt with a random salt). The password is never stored or
+  logged — **if it is forgotten, the backup cannot be opened.** Over plain HTTP from
+  another machine the password crosses the network unencrypted; prefer `localhost` or HTTPS.
+
+**Restore full backup** checks the file first (password, checksums, archive paths,
+database integrity, at least one admin) and shows what it holds and what would be
+replaced — nothing changes until you type `RESTORE`. The app then saves the current
+database to `data/backups/before-restore-<time>.db`, swaps in the one from the backup
+at start-up and restarts. Everyone signs in again with the accounts from the backup.
+If anything fails, the current database stays as it was (the reason is shown in the
+panel). A current database too damaged to read is copied as-is and still replaced; if no
+copy can be saved at all (disk full, permissions), the restore stays queued and is tried
+again at the next start. The UI restores the **database only**; application and Docker files are a
+separate step.
+
+**When the app does not start** (from the folder with `docker-compose.yml`):
+
+```bash
+docker compose stop daily-scrum
+docker compose run --rm -it --no-deps -v "$PWD/backup.dsbackup:/tmp/restore.dsbackup:ro" \
+  daily-scrum node scripts/restore-backup.js restore-db /tmp/restore.dsbackup --data /app/data
+docker compose up -d        # applies the restore, keeping a copy of the old database
+```
+
+Without Docker: `node scripts/restore-backup.js restore-db backup.dsbackup --data ./data`,
+then start the app. The tool asks for the password (or reads `BACKUP_PASSWORD`).
+
+**Rebuild everything on a new machine** (only Node 18+ needed to unpack; from any copy of the app):
+
+```bash
+node scripts/restore-backup.js inspect backup.dsbackup            # what is inside
+node scripts/restore-backup.js extract backup.dsbackup ./daily-scrum
+cd daily-scrum               # app + Docker files, data/daily-scrum.db, app.env
+sudo chown -R 1000:1000 data # Linux/WSL: the container user must own it
+# copy what you need from app.env into docker-compose.yml "environment:", then:
+docker compose up -d --build
+```
+
+`app.env` holds the saved configuration values, including secrets — keep it private
+and delete it when done.
 
 > The app must always be reached at the same URL (e.g. `localhost:3001`) — that is
 > where your login session lives.
@@ -381,7 +439,7 @@ issue in JIRA → *History*, and compare the status change date with the sprint'
 close dates (shown in the Sprints panel and the Excel Sprints sheet).
 
 KPI data is stored in the database, so it is backed up with the `data` folder. The
-**Export backup** in Settings does not include it; it is rebuilt from JIRA on refresh.
+**Export team data** in Settings does not include it; it is rebuilt from JIRA on refresh.
 
 Changing the counting rules: in Settings → KPI rules → **Counting rules**, set the delivery
 statuses and whether any Done-category status counts. If a status is renamed in JIRA,
@@ -520,6 +578,9 @@ VPS instead.
 | KPI: sprint marked "stale — last refresh failed" | JIRA errored for that sprint; the other sprints are kept. Press Refresh again. |
 | Performance report: everyone has 0 tickets, or a JIRA error per person | Check the report query and JIRA permissions. Narrow the default query to your projects in Settings → Performance report (see [Set it up for your team](#set-it-up-for-your-team-after-cloning), step 6). |
 | Performance report: one person has 0 tickets | Their JIRA email is missing or wrong. Check it with *Preview the query*. |
+| Restore: "Wrong password, or the backup file is damaged" | The password is case-sensitive and cannot be recovered; a file changed in any way also fails. |
+| Restore did not apply | Settings → Data & backup shows the reason; the current database was kept. The refused file is in `data/restore-failed-*.db`. |
+| After a restore the app did not come back | Not running under Docker's restart policy — start it again (`docker compose up -d` or `npm start`); the restore applies then. |
 | Data "disappeared" | The `data` volume is missing/moved, or you opened a different URL. |
 
 ## Project layout
@@ -548,6 +609,11 @@ lib/pi-core.js   Performance report: periods, JQL template, row mapping (pure)
 lib/pi-service.js /api/pi (GET reads, POST refreshes from JIRA) and /api/pi/preview (admins and Technical Leads)
 lib/team-scope.js Technical Lead scoping: narrowed reads, widened saves (pure)
 lib/http-utils.js   request body reading with a size limit
+lib/backup-format.js  full backup file format: AES-256-GCM + scrypt, checksummed bundle (pure)
+lib/backup-apply.js   database checks, queued restore applied at start-up with a safety copy
+lib/backup-service.js /api/backup: create, inspect, restore (admins only)
+public/full-backup.js Settings → Data & backup: full backup and reviewed restore
+scripts/restore-backup.js offline inspect / extract / restore-db for .dsbackup files
 api/jira.js      serverless wrapper for static hosting
 tests/           node:test suites (npm test)
 scripts/capture-ui-pages.py  offline demo-data screenshot generator

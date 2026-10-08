@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 // The UI scripts in index.html load order. Each runs as its own script in
 // one shared context, like the browser; init() is left out.
-const sources = ['theme.js', 'monthly-report.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-query.js', 'pi-report.js', 'pi-editor.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
+const sources = ['theme.js', 'monthly-report.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-query.js', 'pi-report.js', 'pi-editor.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'full-backup.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
   fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8').replace(/\ninit\(\);\s*$/, '\n'));
 
 function appContext(fetchImpl = async () => { throw new Error('unexpected fetch'); }) {
@@ -1580,4 +1580,39 @@ test('Performance membership includes selected KPI people plus the linked member
   const { context } = appContext(); todayBoard(context, {});
   vm.runInContext("state.settings.kpiMembers = ['m1']; auth.memberId = 'm2'",context);
   assert.equal(vm.runInContext("piMemberList().map(m=>m.id).join(',')",context),'m1,m2');
+});
+
+test('the full backup sections show only for admins on the server, with the password warning', () => {
+  const { context } = appContext();
+  context.location = { protocol: 'http:', hostname: '192.168.1.20' };
+  vm.runInContext("storageMode = 'server'; auth.role = 'admin'; fullBackup.status = {};", context);
+  const admin = vm.runInContext('dataPanel()', context);
+  assert.match(admin, /id="fullBackupForm"/);
+  assert.match(admin, /id="restoreCheckForm"/);
+  assert.match(admin, /nobody can open the backup/);
+  assert.match(admin, /plain HTTP/, 'warns when the password would cross the network unencrypted');
+  context.location = { protocol: 'http:', hostname: 'localhost' };
+  assert.doesNotMatch(vm.runInContext('dataPanel()', context), /plain HTTP/);
+  for (const setup of ["auth.role = 'lead'", "auth.role = 'viewer'", "auth.role = 'admin'; storageMode = 'local'"]) {
+    vm.runInContext(setup, context);
+    assert.doesNotMatch(vm.runInContext('dataPanel()', context), /fullBackupForm/, setup);
+  }
+});
+
+test('the restore review lists what is replaced and warnings, escaped', () => {
+  const { context } = appContext();
+  context.location = { protocol: 'https:', hostname: 'scrum.example' };
+  vm.runInContext(`storageMode = 'server'; auth.role = 'admin'; fullBackup.status = {};
+    fullBackup.review = { id: 'x', createdAt: '2026-01-01T00:00:00Z', createdBy: '<b>owner</b>', appVersion: '1.0.0',
+      currentVersion: '1.0.0', included: ['database'], envKeys: ['TZ'], appFiles: 3, accounts: [{ username: 'owner', role: 'admin' }],
+      tables: [{ name: 'users', current: 1, backup: 3 }, { name: 'pi_reports', current: 2, backup: null }],
+      warnings: ['These current accounts are not in the backup and will be removed: other.'],
+      replaces: ['The whole current database'], keeps: ['A copy of the current database'] };`, context);
+  const html = vm.runInContext('dataPanel()', context);
+  assert.match(html, /data-action="full-restore"/);
+  assert.match(html, /will be removed: other/);
+  assert.match(html, /The whole current database/);
+  assert.match(html, /&lt;b&gt;owner&lt;\/b&gt;/);
+  assert.doesNotMatch(html, /<b>owner<\/b>/);
+  assert.ok(vm.runInContext("ADMIN_ACTIONS.includes('full-restore') && EDIT_ACTIONS.includes('full-restore')", context));
 });

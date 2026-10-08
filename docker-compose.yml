@@ -16,4 +16,5 @@ services:
       # - JIRA_SITE=yourteam.atlassian.net
       # - JIRA_EMAIL=you@company.com
       # - JIRA_API_TOKEN=your-api-token
-    restart: no
+    # Restarts after a crash or a reboot, and after a database restore from Settings → Data & backup.
+    restart: unless-stopped

@@ -1,6 +1,7 @@
 """Capture README screenshots with synthetic data and no running app server.
 
-Run: python scripts/capture-ui-pages.py
+Run: python scripts/capture-ui-pages.py [name ...]
+(names limit the run to those captures, e.g. settings-backup)
 Requires Playwright for Python and a Chromium browser (installed Chrome is used
 on Windows). Every request is intercepted; no real account, database, or JIRA
 site is accessed.
@@ -9,6 +10,7 @@ site is accessed.
 from pathlib import Path
 from urllib.parse import urlparse
 import mimetypes
+import sys
 
 from playwright.sync_api import sync_playwright
 
@@ -127,6 +129,22 @@ SEED = r"""() => {
     ],
     tasks
   };
+  // delivery trend: eight demo sprints, two per month, ending with the two above
+  const trendDone = [9, 11, 8, 12, 10, 13, 11, 12];
+  const trendCarry = [3, 2, 4, 1, 3, 2, 2, 3];
+  kpiUi.trend.data = {
+    sprints: trendDone.map((done, i) => {
+      const m = shiftMonth(month, Math.floor(i / 2) - 3);
+      const carryover = trendCarry[i];
+      return {
+        id: i - 5, name: 'Demo Sprint ' + (34 + i), state: 'closed', month: m,
+        start: m + (i % 2 ? '-15' : '-01'), end: m + (i % 2 ? '-28' : '-14'),
+        closedAt: m + (i % 2 ? '-28' : '-14') + 'T10:00:00Z', computedAt: today + 'T02:00:00Z',
+        done, carryover, open: 0, excluded: 1, spDone: done * 3 + 2, spCarryover: carryover * 3, spOpen: 0,
+        completion: done / (done + carryover)
+      };
+    })
+  };
 
   piUi.period = piDefaultPeriod();
   const range = PiPeriods.range(piUi.period);
@@ -163,6 +181,38 @@ SEED = r"""() => {
     })
   };
   render();
+}"""
+
+# The full backup panel is server-only: show it as an admin would see it on the
+# server itself, with a checked demo backup under review. No request is made.
+BACKUP_SEED = r"""() => {
+  storageMode = 'server';
+  auth.role = 'admin';
+  window.fullBackupInsecure = () => false;
+  const made = new Date(Date.now() - 3 * 86400000).toISOString();
+  fullBackup.status = { lastRestore: null };
+  fullBackup.review = {
+    id: 'demo', createdAt: made, createdBy: 'admin', appVersion: '1.0.0',
+    gitCommit: 'f078b51d0c2e', currentVersion: '1.0.0',
+    included: ['database', 'configuration', 'application'], appFiles: 64,
+    envKeys: ['PORT', 'TZ', 'JIRA_SITE'],
+    accounts: [{ username: 'admin', role: 'admin' }, { username: 'viewer', role: 'viewer' }],
+    warnings: ['Configuration values (PORT, TZ, JIRA_SITE) are in the backup but are not changed by this restore; apply them in docker-compose.yml if needed.'],
+    replaces: [
+      'The whole current database: accounts and passwords, settings, JIRA credentials, notes, team data and report history.',
+      'Everyone is signed out and signs in again with the accounts from the backup.'
+    ],
+    keeps: [
+      'A copy of the current database, saved in data/backups/ before it is replaced.',
+      'The application files, Docker setup and environment values (restore those separately — see RESTORE.txt in the backup).'
+    ],
+    tables: [
+      { name: 'days', current: 42, backup: 40 },
+      { name: 'members', current: 6, backup: 6 },
+      { name: 'settings', current: 9, backup: 9 },
+      { name: 'users', current: 2, backup: 2 }
+    ]
+  };
 }"""
 
 
@@ -222,8 +272,16 @@ def main():
             ("performance-report", "pi", None, ".pi-rank"),
             ("settings-team", "settings", "team", ".member-table"),
             ("settings-jira", "settings", "jira", "#setSite"),
+            ("settings-backup", "settings", "data", ".backup-review"),
         ]
+        wanted = set(sys.argv[1:])
+        unknown = wanted - {c[0] for c in captures}
+        assert not unknown, "Unknown captures: " + ", ".join(sorted(unknown))
         for filename, view, tab, expected in captures:
+            if wanted and filename not in wanted:
+                continue
+            if filename == "settings-backup":
+                page.evaluate(BACKUP_SEED)
             page.evaluate(
                 """({view, tab, filename}) => {
                   ui.view = view;

@@ -12,6 +12,9 @@ COPY server.js ./
 COPY lib ./lib
 COPY api ./api
 COPY public ./public
+COPY scripts/restore-backup.js ./scripts/
+# Kept so a full backup (Settings → Data & backup) can include the deployment setup.
+COPY Dockerfile docker-compose.yml .dockerignore ./deploy/
 
 ENV PORT=3000
 ENV DATA_DIR=/app/data

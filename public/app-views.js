@@ -1189,17 +1189,17 @@ function dataPanel() {
     <p class="panel-sub">${storageMode === 'local'
       ? "Everything lives in this browser's localStorage — nothing leaves your machine except JIRA API calls."
       : 'Everything is stored in the server\'s SQLite database (<code>data/daily-scrum.db</code>), so it survives browser changes and is shared with every signed-in user.'}
-      Export a backup to keep safe or move elsewhere.</p>
+      <b>Export team data</b> saves members, notes and history as JSON, to move them elsewhere or keep a copy.
+      It leaves out accounts, settings and JIRA credentials${fullBackupAllowed() ? '; to bring back the whole app, use the full encrypted backup below' : ''}.</p>
     <div class="row-gap">
-      <button class="btn btn-ghost" data-action="export">&#10515; Export backup</button>
-      <button class="btn btn-ghost" data-action="import-btn">&#10514; Import backup</button>
+      <button class="btn btn-ghost" data-action="export">&#10515; Export team data</button>
+      <button class="btn btn-ghost" data-action="import-btn">&#10514; Import team data</button>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
     </div>
     <div style="margin-top:12px">
       <button class="btn btn-danger-ghost btn-sm" data-action="erase">Erase all data</button>
     </div>
-    <p class="panel-sub" style="margin:10px 0 0">JIRA credentials are stored separately in the database and are never included in backups.</p>
-  </section>`;
+  </section>${fullBackupPanelHtml()}`;
 }
 
 /* ---------------- render ---------------- */
