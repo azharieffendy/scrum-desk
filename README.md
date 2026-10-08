@@ -363,6 +363,15 @@ Using it:
    with their reason. The find box above the list filters by task summary or key (several keys
    at once: `DEMO-4099, 4087`). **Download Excel** gives Summary, Sprints and Tasks sheets.
 
+**Delivery trend.** On the whole-team page, a line chart plots completion and story points
+delivered per computed sprint, oldest on the left, from the cached KPI data (no extra JIRA
+calls). By default it charts the last sprints **up to the selected month**, so September's
+page shows the trend as it stood in September; **All recent** switches to the latest sprints
+no matter which month is open. Pick **Last 6**, **Last 12** or **All** sprints; the selected
+month's points carry a dark ring. Hover a point for that sprint's numbers, and click it to
+open the month the sprint started in. Active sprints are drawn hollow and have no completion
+until they close. Technical Leads see only their own team's trend.
+
 Settings → KPI rules: the **board ID** and **story points field** are
 detected automatically. Set them by hand if detection picks the wrong board, or press
 **Detect story points field**. Changing either one (or the site) clears the cached KPI data.

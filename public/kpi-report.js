@@ -287,6 +287,31 @@ function kpiMemberReport(view, key) {
   return { row, tasks, sprints };
 }
 
+/**
+ * The delivery-trend slice to chart. opts: count (sprints; 0 = all), month (YYYY-MM) and
+ * mode: 'month' pools only sprints up to and including that month (the default), 'recent'
+ * always takes the latest ones. monthIds marks the selected month's sprints for highlight.
+ */
+function kpiTrendView(trend, opts) {
+  const o = opts || {};
+  const all = (trend && trend.sprints) || [];
+  const n = o.count === 0 ? Infinity : Math.max(1, Number(o.count) || 12);
+  let pool = all;
+  if (o.month && o.mode !== 'recent') pool = all.filter((s) => !s.month || s.month <= o.month);
+  const sprints = pool.slice(-n);
+  const monthIds = new Set(o.month ? sprints.filter((s) => s.month === o.month).map((s) => s.id) : []);
+  const counted = sprints.filter((s) => s.completion !== null && s.completion !== undefined);
+  return {
+    sprints,
+    total: all.length,
+    windowed: pool.length < all.length,
+    monthIds,
+    avgCompletion: counted.length ? counted.reduce((a, s) => a + s.completion, 0) / counted.length : null,
+    spDone: sprints.reduce((a, s) => a + (Number(s.spDone) || 0), 0),
+    spCarryover: sprints.reduce((a, s) => a + (Number(s.spCarryover) || 0), 0),
+  };
+}
+
 /** Detail list: excluded tasks hidden unless asked for; optional one-person filter. */
 function filterKpiTasks(view, opts) {
   const o = opts || {};
@@ -464,13 +489,25 @@ function kpiMemberSheet(view, m, tz, site) {
 /* ---------------- browser view ---------------- */
 
 const kpiUi = { reports: {}, loading: null, error: null, memberKey: '', showExcluded: false, refreshing: false, find: '', taskMember: '', outcome: '',
-  roleDrafts: 0 }; // per-role rows added on screen but not given a role yet (saved once they have one)
+  roleDrafts: 0, // per-role rows added on screen but not given a role yet (saved once they have one)
+  trend: { data: null, error: null, loading: false, seq: 0 },
+  trendCount: 12, // how many sprints the trend charts (0 = all)
+  trendMode: 'month' }; // 'month': sprints up to the selected month; 'recent': the latest sprints
 
 /** Admins and Technical Leads refresh the KPI data; a lead only gets their own team back. */
 function isKpiAdmin() { return auth.role === 'admin' || auth.role === 'lead'; }
 
 /** Drops cached months so the next render fetches fresh data. */
-function resetKpi() { kpiUi.reports = {}; kpiUi.error = null; }
+function resetKpi() { kpiUi.reports = {}; kpiUi.error = null; resetKpiTrend(); }
+
+/** Drops the trend so the next KPI render reads it again (new rules or a fresh refresh).
+ *  Bumping seq abandons any fetch in flight, so its stale result is discarded. */
+function resetKpiTrend() {
+  kpiUi.trend.seq++;
+  kpiUi.trend.data = null;
+  kpiUi.trend.error = null;
+  kpiUi.trend.loading = false;
+}
 
 /**
  * Settings → Sprint delivery (KPI) counting rules. Checked here first: every save sends the whole board in one
@@ -520,6 +557,24 @@ async function loadKpi(month) {
   }
 }
 
+/** The trend across all computed sprints, from the server's KPI cache (no JIRA). Fetched once. */
+async function loadKpiTrend() {
+  if (kpiUi.trend.data || kpiUi.trend.loading) return;
+  const seq = ++kpiUi.trend.seq;
+  kpiUi.trend.loading = true;
+  try {
+    const data = await kpiFetch('/api/kpi/trend');
+    if (seq === kpiUi.trend.seq) kpiUi.trend.data = data; // a reset in between wins
+  } catch (e) {
+    if (seq === kpiUi.trend.seq) kpiUi.trend.error = e.message;
+  } finally {
+    if (seq === kpiUi.trend.seq) {
+      kpiUi.trend.loading = false;
+      if (ui.view === 'kpi') render();
+    }
+  }
+}
+
 async function refreshKpi() {
   if (kpiUi.refreshing || !isKpiAdmin()) return;
   const month = ui.month;
@@ -530,6 +585,7 @@ async function refreshKpi() {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ month }),
     });
     kpiUi.reports[month] = data;
+    resetKpiTrend(); // sprint results changed: chart them again on the next render
     const pending = data.sprints.filter((s) => s.status === 'pending').length;
     toast(pending ? pending + ' sprint' + (pending === 1 ? '' : 's') + ' still pending — refresh again' : 'KPI report refreshed',
       pending ? '' : 'success');
@@ -594,6 +650,160 @@ function kpiEmpty(icon, title, text, withRefresh) {
   </section></div>`;
 }
 
+/* ---------------- delivery trend (across sprints) ---------------- */
+
+/** Inline SVG line chart: completion % (left axis) and SP delivered (right axis), oldest left. */
+function kpiTrendChart(view) {
+  const sprints = view.sprints;
+  const W = 760; const H = 262; const ML = 46; const MR = 52; const MT = 16; const MB = 52;
+  const PW = W - ML - MR; const PH = H - MT - MB;
+  const x = (i) => (sprints.length === 1 ? ML + PW / 2 : ML + (i * PW) / (sprints.length - 1));
+  const yPct = (rate) => MT + (1 - rate) * PH; // completion arrives as 0..1
+  const spMax = Math.max(10, Math.ceil(Math.max(0, ...sprints.map((s) => Number(s.spDone) || 0)) / 10) * 10);
+  const ySp = (v) => MT + (1 - v / spMax) * PH;
+  const fx = (v) => String(Math.round(v * 10) / 10);
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monName = (month) => MON[Number(String(month).slice(5, 7)) - 1] || month;
+  // compact label parts that keep the sprint number: "DB2 Sprint 168" → team "DB2", num "168"
+  // (the prefix may itself contain digits, hence .*? before the trailing number)
+  const labelParts = (name) => {
+    const str = String(name || '');
+    const m = /^(.*?)(\d{1,5})\s*$/.exec(str);
+    if (m) {
+      const full = m[1].trim().replace(/\s+sprint$/i, '').trim();
+      const team = full.slice(0, 5);
+      return { team: team.length < full.length ? team.trimEnd() + '…' : team, num: m[2] };
+    }
+    return { team: '', num: str.length > 11 ? str.slice(0, 10) + '…' : str };
+  };
+
+  const grid = [0, 0.5, 1].map((v) => `
+    <line x1="${ML}" x2="${ML + PW}" y1="${yPct(v)}" y2="${yPct(v)}" class="kpt-grid${v ? '' : ' kpt-grid-zero'}"></line>
+    <text x="${ML - 8}" y="${yPct(v) + 4}" class="kpt-label" text-anchor="end">${v * 100}%</text>`).join('');
+
+  const spPts = sprints.map((s, i) => [x(i), ySp(Number(s.spDone) || 0)]);
+  const donePts = sprints.map((s, i) => (s.completion == null ? null : [x(i), yPct(s.completion)]))
+    .filter(Boolean);
+  const poly = (ptsArr, cls) => (ptsArr.length > 1
+    ? `<polyline class="kpt-line ${cls}" points="${ptsArr.map((p) => fx(p[0]) + ',' + fx(p[1])).join(' ')}"></polyline>` : '');
+
+  const dots = sprints.map((s, i) => {
+    const cx = fx(x(i)); const spY = fx(ySp(Number(s.spDone) || 0));
+    const doneY = s.completion == null ? null : fx(yPct(s.completion));
+    const open = s.state !== 'closed'; // active sprints get hollow points
+    const hot = view.monthIds && view.monthIds.has(s.id) ? ' kpt-hot' : ''; // the selected month's sprints
+    const r = open ? '4.5' : '4';
+    const tip = `${s.name || 'Sprint ' + s.id}: ${kpiPct(s.completion == null ? null : s.completion)} completion · ` +
+      `${kpiSp(Number(s.spDone) || 0)} SP delivered · ${s.carryover} carry-over · ${s.done} delivered` +
+      (open ? ' · active sprint' : '') + (s.month ? ` · ${kpiLabelOf(s.month)}` : '');
+    const click = s.month ? ` data-action="kpi-month" data-month="${esc(s.month)}"` : '';
+    return `
+    <g class="kpt-dot"${click}>
+      <title>${esc(tip)}</title>
+      <circle class="kpt-hit" cx="${cx}" cy="${spY}" r="12"></circle>
+      <circle class="kpt-pt kpt-sp${open ? ' kpt-open' : ''}${hot}" cx="${cx}" cy="${spY}" r="${r}"></circle>
+      ${doneY === null ? '' : `<circle class="kpt-hit" cx="${cx}" cy="${doneY}" r="12"></circle>
+      <circle class="kpt-pt kpt-done${open ? ' kpt-open' : ''}${hot}" cx="${cx}" cy="${doneY}" r="${r}"></circle>`}
+    </g>`;
+  }).join('');
+
+  // consecutive sprints of different months get a separator; each month gets a caption
+  const groups = [];
+  for (const s of sprints) {
+    const last = groups[groups.length - 1];
+    if (last && last.month === s.month) last.sprints.push(s);
+    else groups.push({ month: s.month || '', sprints: [s] });
+  }
+  const seps = groups.slice(1).map((g) => {
+    const i = sprints.indexOf(g.sprints[0]);
+    const mx = (x(i - 1) + x(i)) / 2;
+    return `<line x1="${fx(mx)}" x2="${fx(mx)}" y1="${MT}" y2="${MT + PH}" class="kpt-msep"></line>`;
+  }).join('');
+  const manyYears = new Set(groups.map((g) => g.month.slice(0, 4))).size > 1;
+  const monthLabels = groups.map((g) => {
+    const a = sprints.indexOf(g.sprints[0]); const b = sprints.indexOf(g.sprints[g.sprints.length - 1]);
+    const label = monName(g.month) + (manyYears ? ' ' + g.month.slice(0, 4) : '');
+    return `<text x="${fx((x(a) + x(b)) / 2)}" y="${H - 2}" class="kpt-mlabel" text-anchor="middle">${esc(label)}<title>${esc(kpiLabelOf(g.month))}</title></text>`;
+  }).join('');
+
+  // two stacked lines (team over number) keep neighbours apart; with a single team the
+  // team line would repeat on every sprint, so the numbers alone are shown
+  const parts = sprints.map((s) => labelParts(s.name || 'Sprint ' + s.id));
+  const oneTeam = new Set(parts.map((p) => p.team)).size <= 1;
+  const labels = sprints.map((s, i) => {
+    const show = sprints.length <= 14 || i % 2 === (sprints.length - 1) % 2;
+    if (!show) return '';
+    const p = parts[i];
+    const name = s.name || 'Sprint ' + s.id;
+    const x0 = fx(x(i));
+    const stacked = p.team && !oneTeam;
+    const body = stacked
+      ? `<tspan x="${x0}">${esc(p.team)}</tspan><tspan x="${x0}" dy="11">${esc(p.num)}</tspan>`
+      : `<tspan x="${x0}">${esc(p.num)}</tspan>`;
+    return `<text x="${x0}" y="${stacked ? H - 25 : H - 14}" class="kpt-label" text-anchor="middle">${body}<title>${esc(name)}</title></text>`;
+  }).join('');
+
+  const names = sprints.map((s) => s.name || 'Sprint ' + s.id).join(', ');
+  return `
+  <svg class="kpt-svg" viewBox="0 0 ${W} ${H}" role="img"
+    aria-label="Delivery trend over ${sprints.length} sprints (${esc(names)}): completion percentage and story points delivered, oldest on the left.">
+    ${grid}
+    ${seps}
+    <text x="${W - MR + 8}" y="${ySp(spMax) + 4}" class="kpt-label" text-anchor="start">${fx(spMax)} SP</text>
+    ${poly(spPts, 'kpt-line-sp')}
+    ${poly(donePts, 'kpt-line-done')}
+    ${dots}
+    ${labels}
+    ${monthLabels}
+  </svg>`;
+}
+
+/** The whole panel; hidden until the trend loads and pointless before the first computed sprint. */
+function kpiTrendPanel() {
+  const t = kpiUi.trend;
+  if (!t.data && !t.error && !t.loading) loadKpiTrend();
+  if (!t.data && t.error) {
+    return `
+    <section class="panel empty-inline kpi-trend" aria-label="Delivery trend failed to load">
+      <p>Could not load the delivery trend: ${esc(t.error)}</p>
+      <button class="btn btn-ghost btn-sm" data-action="kpi-trend-retry">Try again</button>
+    </section>`;
+  }
+  if (!t.data) return '';
+  const view = kpiTrendView(t.data, { count: kpiUi.trendCount, month: ui.month, mode: kpiUi.trendMode });
+  if (!view.sprints.length) return ''; // the selected month is before every computed sprint
+  const shown = view.sprints.length;
+  const hot = view.monthIds.size ? `
+        <span><i class="kpt-sw kpt-sw-hot"></i>${esc(kpiLabelOf(ui.month))}</span>` : '';
+  const scope = kpiUi.trendMode === 'recent' || !view.windowed
+    ? `the ${shown} charted sprint${shown === 1 ? '' : 's'}`
+    : `the ${shown} sprints up to ${esc(kpiLabelOf(ui.month))}`;
+  return `
+  <section class="panel kpi-trend" aria-label="Delivery trend across sprints">
+    <div class="kpi-trend-head">
+      <h3>Delivery trend</h3>
+      <span class="muted kpi-trend-sub">${view.total} computed sprint${view.total === 1 ? '' : 's'} · click a point to open its month</span>
+      <div class="seg" role="group" aria-label="Trend window">
+        <button type="button" class="seg-btn${kpiUi.trendMode !== 'recent' ? ' active' : ''}" data-action="kpi-trend-mode" data-mode="month" aria-pressed="${kpiUi.trendMode !== 'recent'}">Up to ${esc(kpiLabelOf(ui.month))}</button>
+        <button type="button" class="seg-btn${kpiUi.trendMode === 'recent' ? ' active' : ''}" data-action="kpi-trend-mode" data-mode="recent" aria-pressed="${kpiUi.trendMode === 'recent'}">All recent</button>
+      </div>
+      <div class="seg" role="group" aria-label="How many sprints to chart">
+        ${[[6, 'Last 6'], [12, 'Last 12'], [0, 'All']].map(([n, label]) =>
+          `<button type="button" class="seg-btn${kpiUi.trendCount === n ? ' active' : ''}" data-action="kpi-trend-count" data-count="${n}" aria-pressed="${kpiUi.trendCount === n}">${label}</button>`).join('')}
+      </div>
+    </div>
+    ${kpiTrendChart(view)}
+    <div class="kpi-trend-foot">
+      <div class="kpi-trend-legend" aria-hidden="true">
+        <span><i class="kpt-sw kpt-sw-done"></i>Completion</span>
+        <span><i class="kpt-sw kpt-sw-sp"></i>SP delivered</span>
+        <span><i class="kpt-sw kpt-sw-open"></i>active sprint</span>${hot}
+      </div>
+      <span class="muted kpi-trend-note">Average completion ${kpiPct(view.avgCompletion)} · ${kpiSp(view.spDone)} SP delivered in ${scope}</span>
+    </div>
+  </section>`;
+}
+
 function viewKpi() {
   if (storageMode === 'local') {
     return kpiEmpty('&#128202;', 'Available in server mode only', 'The KPI report reads sprint history from JIRA on the server. Run the app with its server to use it.');
@@ -622,7 +832,7 @@ function viewKpi() {
   const m = kpiUi.memberKey ? kpiMemberReport(v, kpiUi.memberKey) : null;
   if (!m) kpiUi.memberKey = ''; // that person has no row this month
   if (m) return kpiToolbar(report) + kpiMemberSwitch(v) + kpiMemberHero(v, m) + kpiMemberSprintsPanel(m) + kpiTasksPanel(v);
-  return kpiToolbar(report) + kpiMemberSwitch(v) + kpiHero(v) + kpiMembersPanel(v) + kpiSprintsPanel(v) + kpiTasksPanel(v);
+  return kpiToolbar(report) + kpiMemberSwitch(v) + kpiHero(v) + kpiTrendPanel() + kpiMembersPanel(v) + kpiSprintsPanel(v) + kpiTasksPanel(v);
 }
 
 /** On a person's report: back to the whole team, or switch person. The whole-team page uses the cards instead. */
@@ -925,7 +1135,7 @@ function downloadKpiXlsx() {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { buildKpiView, filterKpiTasks, kpiIssueUrl, kpiSheets, kpiMemberReport, taskFindMatch, KPI_OUTCOMES,
+  module.exports = { buildKpiView, filterKpiTasks, kpiIssueUrl, kpiSheets, kpiMemberReport, taskFindMatch, kpiTrendView, KPI_OUTCOMES,
     KPI_TIPS, kpiRules, kpiRulesError, kpiDoneWords, kpiDoneShort, kpiRulesNote,
     kpiRoleRules, kpiRoleRulesError, kpiRoleNote };
 }

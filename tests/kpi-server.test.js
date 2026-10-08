@@ -355,3 +355,59 @@ test('fields: JIRA errors become 502, missing credentials 400', async () => {
   db.savePatch({ baseVersion: db.getStateVersion(), patch: {}, creds: { token: null } });
   assert.equal((await fields(service())).status, 400);
 });
+
+const trendOf = (svc, opts = {}) => svc.handleRequest({
+  method: opts.method || 'GET', path: '/api/kpi/trend', admin: Boolean(opts.admin), team: opts.team || null,
+});
+
+test('GET /api/kpi/trend totals each cached sprint without calling JIRA', async () => {
+  const svc = service();
+  const empty = await trendOf(svc);
+  assert.equal(empty.status, 200);
+  assert.deepEqual(empty.payload.sprints, []);
+  assert.equal(calls.length, 0, 'an empty cache needs no JIRA either');
+  await refresh(svc, '2026-09');
+  calls.length = 0;
+  const res = await trendOf(svc);
+  assert.equal(res.status, 200);
+  assert.equal(calls.length, 0, 'the trend reads the KPI cache only');
+  assert.equal(res.payload.configured, true);
+  assert.ok(res.payload.months.includes('2026-09'));
+  assert.deepEqual(res.payload.sprints.map((s) => s.id), [101, 102], 'oldest sprint first');
+  const closed = res.payload.sprints[0];
+  assert.equal(closed.name, 'Sprint 101');
+  assert.equal(closed.state, 'closed');
+  assert.equal(closed.month, '2026-09');
+  assert.deepEqual([closed.done, closed.carryover, closed.open], [1, 0, 0]);
+  assert.equal(closed.spDone, 3);
+  assert.equal(closed.completion, 1);
+  const active = res.payload.sprints[1];
+  assert.equal(active.state, 'active');
+  assert.equal(active.open, 1);
+  assert.equal(active.completion, null, 'an active sprint with only open work has no completion');
+});
+
+test('POST /api/kpi/trend is refused', async () => {
+  assert.equal((await trendOf(service(), { method: 'POST' })).status, 405);
+});
+
+test('a lead team set narrows the trend to that team’s tasks and sprints', async () => {
+  const svc = service();
+  db.savePatch({ baseVersion: db.getStateVersion(), patch: { settings: { kpiMembers: [] } } });
+  const other = issue('A-9', { sprintId: 101, state: 'closed', statusId: '10001', statusName: 'Done', cat: 'done',
+    updated: '2026-09-06T03:00:00.000+0000', histories: [toDone('2026-09-06T03:00:00.000+0000')] });
+  other.fields.assignee = { accountId: 'acc-2', displayName: 'User Two', emailAddress: 'u2@example.com' };
+  other.fields.customfield_10032 = 5;
+  jira.issues[101] = [jira.issues[101][0], other];
+  await refresh(svc, '2026-09');
+  const everyone = await trendOf(svc);
+  assert.equal(everyone.payload.sprints.find((s) => s.id === 101).done, 2, 'both team members count');
+  const mine = await trendOf(svc, { team: new Set(['m1']) });
+  const row = mine.payload.sprints.find((s) => s.id === 101);
+  assert.equal(row.done, 1, "only User One's task counts");
+  assert.equal(row.spDone, 3);
+  assert.deepEqual(mine.payload.sprints.map((s) => s.id), [101, 102]);
+  const hers = await trendOf(svc, { team: new Set(['m2']) });
+  assert.deepEqual(hers.payload.sprints.map((s) => s.id), [101], 'sprints without that team’s tasks are dropped');
+  assert.equal(hers.payload.sprints[0].spDone, 5);
+});

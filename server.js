@@ -433,6 +433,7 @@ async function handleKpiRoute(req, res, user, url) {
   const body = req.method === 'POST' ? await readJson(req) : null;
   const out = await kpiService.handleRequest({
     method: req.method, path: url.pathname, month: url.searchParams.get('month'), body, admin: isAdmin(user) || lead,
+    team: lead ? scope.scopedMemberIds(db.loadState().members, user) : null,
     creds: db.credsForUser(user),
   });
   if (lead && out.status === 200 && Array.isArray(out.payload.tasks)) {
@@ -508,7 +509,7 @@ async function route(req, res) {
   if (!user) return;
   if (url.pathname === '/api/state') return handleState(req, res, user);
   if (url.pathname === '/api/jira') return handleJiraRoute(req, res, user);
-  if (['/api/kpi', '/api/kpi/refresh', '/api/kpi/fields'].includes(url.pathname)) return handleKpiRoute(req, res, user, url);
+  if (['/api/kpi', '/api/kpi/refresh', '/api/kpi/fields', '/api/kpi/trend'].includes(url.pathname)) return handleKpiRoute(req, res, user, url);
   if (['/api/pi', '/api/pi/preview', '/api/pi/test', '/api/pi/options'].includes(url.pathname)) return handlePiRoute(req, res, user, url);
   if (url.pathname === '/api/status-colors') return handleStatusColorsRoute(req, res, user);
   if (url.pathname === '/api/events') {
