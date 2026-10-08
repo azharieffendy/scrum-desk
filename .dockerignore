@@ -16,3 +16,4 @@ data
 *.bat
 README.md
 tests
+*.dsbackup

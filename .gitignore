@@ -15,3 +15,4 @@ data/
 *.jks
 *.log
 .DS_Store
+*.dsbackup

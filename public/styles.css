@@ -1541,3 +1541,21 @@ button.sheet-note:hover { border-color: var(--line); background: var(--bg); }
 .pi-editor .settings-save-bar span { margin-right:auto; }
 .pi-template[readonly] { background:var(--line-soft); }
 @media(max-width:560px) { .pi-editor-grid { grid-template-columns:minmax(0,1fr); } }
+
+/* Full encrypted backup & restore (Settings → Data & backup) */
+.backup-form { max-width: 420px; }
+.backup-note { font-size: 13px; margin: 0 0 12px; padding: 8px 12px; border-radius: var(--radius-sm); border-left: 3px solid var(--line); background: var(--line-soft); }
+.backup-note.backup-bad { border-left-color: var(--warn); background: var(--att-late-bg); color: var(--ink); }
+.backup-note.backup-ok { border-left-color: var(--ok); }
+.backup-review { margin-top: 18px; padding: 16px 18px; border: 1px solid var(--line); border-left: 3px solid var(--err); border-radius: var(--radius-sm); background: var(--surface); }
+.backup-review h4 { margin: 0 0 12px; font-size: 15px; }
+.backup-review ul { margin: 4px 0 12px; padding-left: 20px; font-size: 13px; }
+.backup-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 14px; margin: 0 0 14px; font-size: 13px; }
+.backup-facts dt { font: 700 12px var(--font-ui); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); padding-top: 1px; }
+.backup-facts dd { margin: 0; overflow-wrap: anywhere; }
+.backup-warnings { padding: 8px 12px 8px 28px !important; background: var(--att-late-bg); border-radius: var(--radius-sm); }
+.backup-label { font: 700 12px var(--font-ui); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 10px 0 0; }
+.backup-tables { width: 100%; max-width: 420px; border-collapse: collapse; font-size: 13px; margin: 6px 0 16px; }
+.backup-tables th, .backup-tables td { padding: 4px 8px; border-bottom: 1px solid var(--line-soft); text-align: left; }
+.backup-tables .num { text-align: right; font-variant-numeric: tabular-nums; }
+@media (max-width: 560px) { .backup-facts { grid-template-columns: minmax(0, 1fr); } .backup-facts dd { margin-bottom: 6px; } }

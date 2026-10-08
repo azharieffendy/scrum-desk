@@ -24,11 +24,13 @@ const { createStatusSync } = require('./lib/status-sync.js');
 const { createLiveHub } = require('./lib/live.js');
 const scope = require('./lib/team-scope.js');
 const passwordPolicy = require('./public/password-policy.js');
+const { createBackupService, isManaged } = require('./lib/backup-service.js');
 
 const kpiService = createKpiService();
 const piService = createPiService();
 const statusSync = createStatusSync();
 const liveHub = createLiveHub();
+const backupService = createBackupService({ db, dataDir: db.DATA_DIR });
 db.onChange((change) => liveHub.publish(change));
 
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -499,6 +501,60 @@ function trustedWriteOrigin(req) {
   } catch (_) { return false; }
 }
 
+/* ---------------- full backup & restore (admins only) ---------------- */
+
+// A base64 upload in JSON is a third larger than the backup file itself.
+const BACKUP_UPLOAD_MAX = 200 * 1024 * 1024;
+const RESTART_DELAY_MS = 300;
+
+async function handleBackupRoute(req, res, user, url) {
+  if (!isAdmin(user)) return sendJson(res, 403, { error: 'Admin access required.' });
+  const action = url.pathname.slice('/api/backup/'.length);
+  if (action === 'status') {
+    if (req.method !== 'GET') return sendJson(res, 405, { error: 'GET only.' });
+    return sendJson(res, 200, backupService.status());
+  }
+  if (req.method !== 'POST') return sendJson(res, 405, { error: 'POST only.' });
+
+  if (action === 'create') {
+    const body = await readJson(req);
+    const weak = passwordPolicy.problem(String(body.password || ''));
+    if (weak) return sendJson(res, 400, { error: 'Backup password: ' + weak });
+    const out = await backupService.create({ password: String(body.password), user: { username: user.username } });
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename="' + out.filename + '"');
+    res.setHeader('Content-Length', out.data.length);
+    res.setHeader('Cache-Control', 'no-store');
+    console.log('[backup] Full backup downloaded by ' + user.username + '.');
+    return res.end(out.data);
+  }
+
+  if (action === 'inspect') {
+    const body = await readJson(req, BACKUP_UPLOAD_MAX);
+    if (typeof body.file !== 'string' || !body.file) return sendJson(res, 400, { error: 'Choose a backup file.' });
+    if (!body.password) return sendJson(res, 400, { error: 'Enter the backup password.' });
+    const file = Buffer.from(body.file, 'base64');
+    return sendJson(res, 200, await backupService.inspect({ file, password: String(body.password) }));
+  }
+
+  if (action === 'restore') {
+    const body = await readJson(req);
+    if (body.confirm !== 'RESTORE') return sendJson(res, 400, { error: 'Type RESTORE to confirm.' });
+    const out = backupService.restore({ id: String(body.id || '') });
+    const managed = isManaged();
+    console.log('[backup] Database restore from the backup of ' + (out.backupCreatedAt || 'an unknown date') +
+      ' queued by ' + user.username + '; restarting to apply it.');
+    sendJson(res, 200, Object.assign(out, { restarting: true, managed }));
+    // The restore is applied at start-up, before the database is opened.
+    setTimeout(() => { db.close(); process.exit(0); }, RESTART_DELAY_MS);
+    return undefined;
+  }
+
+  if (action === 'cancel') return sendJson(res, 200, backupService.cancel());
+  return sendJson(res, 404, { error: 'Unknown API route.' });
+}
+
 async function route(req, res) {
   const url = new URL(req.url, 'http://localhost');
   if (!url.pathname.startsWith('/api/')) return serveStatic(res, url);
@@ -512,6 +568,7 @@ async function route(req, res) {
   if (['/api/kpi', '/api/kpi/refresh', '/api/kpi/fields', '/api/kpi/trend'].includes(url.pathname)) return handleKpiRoute(req, res, user, url);
   if (['/api/pi', '/api/pi/preview', '/api/pi/test', '/api/pi/options'].includes(url.pathname)) return handlePiRoute(req, res, user, url);
   if (url.pathname === '/api/status-colors') return handleStatusColorsRoute(req, res, user);
+  if (url.pathname.startsWith('/api/backup/')) return handleBackupRoute(req, res, user, url);
   if (url.pathname === '/api/events') {
     if (req.method !== 'GET') return sendJson(res, 405, { error: 'Method not allowed.' });
     return liveHub.subscribe(req, res, db.getStateVersion());

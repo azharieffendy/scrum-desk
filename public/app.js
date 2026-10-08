@@ -247,12 +247,12 @@ async function resetStatusColors() {
 /* ---------------- event delegation ---------------- */
 
 /** Admin-only on top of EDIT_ACTIONS: JIRA connection, backups, global KPI/PI settings, status colours. */
-const ADMIN_ACTIONS = ['reset-jql', 'jira-save', 'jira-discard', 'import-btn', 'erase', 'test-conn', 'export',
+const ADMIN_ACTIONS = ['reset-jql', 'jira-save', 'jira-discard', 'import-btn', 'erase', 'test-conn', 'export', 'full-restore', 'full-restore-cancel',
   'kpi-detect-field', 'status-color-pick', 'status-color-set', 'status-color-reset', 'pi-reset-jql', 'pi-preview', 'pi-save', 'pi-discard', 'pi-analyze', 'pi-convert', 'pi-use-conversion', 'pi-builder', 'pi-direct', 'pi-insert', 'pi-rule-add', 'pi-rule-remove', 'pi-options',
   'kpi-role-add', 'kpi-role-remove'];
 
 const EDIT_ACTIONS = ['add-member', 'edit-member', 'remove-member', 'sync',
-  'start-day', 'cancel-day', 'edit-note', 'finish-note', 'delete-day', 'reset-jql', 'jira-save', 'jira-discard', 'import-btn', 'erase', 'test-conn', 'export',
+  'start-day', 'cancel-day', 'edit-note', 'finish-note', 'delete-day', 'reset-jql', 'jira-save', 'jira-discard', 'import-btn', 'erase', 'test-conn', 'export', 'full-restore', 'full-restore-cancel',
   'kpi-detect-field', 'status-color-pick', 'status-color-set', 'status-color-reset',
   'pi-generate', 'pi-download', 'pi-reset-jql', 'pi-preview', 'pi-save', 'pi-discard', 'pi-analyze', 'pi-convert', 'pi-use-conversion', 'pi-builder', 'pi-direct', 'pi-insert', 'pi-rule-add', 'pi-rule-remove', 'pi-options', 'kpi-role-add', 'kpi-role-remove'];
 
@@ -428,6 +428,8 @@ const clickActions = {
     renderSaveStatus();
   },
   'export': () => exportData(),
+  'full-restore': () => startFullRestore(),
+  'full-restore-cancel': () => cancelFullRestore(),
   'import-btn': () => { const f = $('#importFile'); if (f) f.click(); },
   'erase': () => eraseAll(),
   'logout': () => logout(),
@@ -653,6 +655,12 @@ async function onDocSubmit(e) {
   if (f.id === 'pwForm') { e.preventDefault(); await onPasswordSubmit(f); return; }
   if (f.id === 'ownKeyForm' || f.id === 'ownKeyModalForm') { e.preventDefault(); await onOwnKeySubmit(f); return; }
   if (f.id === 'userForm') { e.preventDefault(); await onUserCreateSubmit(f); return; }
+  if (f.id === 'fullBackupForm' || f.id === 'restoreCheckForm') {
+    e.preventDefault();
+    // forms are admin-only like the backup buttons (the server checks too)
+    if (!fullBackupAllowed()) { toast('Only an admin can do this', 'error'); return; }
+    if (f.id === 'fullBackupForm') await onFullBackupSubmit(f); else await onRestoreCheckSubmit(f);
+  }
 }
 
 /* ---------------- init ---------------- */
