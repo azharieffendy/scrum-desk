@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Offline tool for Daily Scrum full backups (.dsbackup). Works while the app is down.
+ * Offline tool for Scrum Desk full backups (.dsbackup). Works while the app is down.
  *
  *   node scripts/restore-backup.js inspect    <backup>                 show what the backup holds
  *   node scripts/restore-backup.js restore-db <backup> --data <dir>    queue its database; the next start applies it
@@ -17,7 +17,6 @@ const path = require('path');
 const crypto = require('crypto');
 const format = require('../lib/backup-format.js');
 
-const DB_PATH = 'db/daily-scrum.db';
 
 function fail(message) {
   process.stderr.write('Error: ' + message + '\n');
@@ -71,7 +70,7 @@ async function open(file) {
   const password = await askPassword();
   process.stdout.write('Decrypting and verifying checksums…\n');
   const bundle = await format.decrypt(data, password);
-  if (bundle.manifest.app !== 'daily-scrum') fail('This backup was not made by Daily Scrum.');
+  if (!format.isAppBackup(bundle.manifest)) fail('This backup was not made by Scrum Desk.');
   return bundle;
 }
 
@@ -100,7 +99,7 @@ async function cmdRestoreDb(file, dataDir) {
   const apply = require('../lib/backup-apply.js'); // needs better-sqlite3, unlike inspect and extract
   const bundle = await open(file);
   printSummary(bundle);
-  const dbData = bundle.files.get(DB_PATH);
+  const dbData = format.bundleDatabase(bundle);
   if (!dbData) fail('This backup does not contain a database.');
   const tmp = path.join(apply.workDir(dataDir), 'restore-cli-' + crypto.randomBytes(8).toString('hex') + '.db');
   fs.writeFileSync(tmp, dbData, { mode: 0o600 });
@@ -138,7 +137,7 @@ async function cmdExtract(file, outDir) {
   fs.mkdirSync(root, { recursive: true });
   for (const [p, data] of bundle.files) {
     if (p.startsWith('app/')) writeInside(root, p.slice(4), data);
-    else if (p === DB_PATH) writeInside(root, 'data/daily-scrum.db', data, 0o600);
+    else if (format.isDatabasePath(p)) writeInside(root, 'data/scrum-desk.db', data, 0o600);
     else if (p === 'config/app.env') writeInside(root, 'app.env', data, 0o600);
     else if (p === 'config/env.json') continue;
     else writeInside(root, p, data);
@@ -147,7 +146,7 @@ async function cmdExtract(file, outDir) {
   process.stdout.write([
     '',
     'Unpacked into ' + root,
-    '  data/daily-scrum.db   the database (the app opens it from ./data)',
+    '  data/scrum-desk.db   the database (the app opens it from ./data)',
     '  app.env               the configured values — it holds secrets; keep it private',
     '  RESTORE.txt           the remaining steps',
     'Next: review app.env, add what you need to docker-compose.yml, then: docker compose up -d --build',

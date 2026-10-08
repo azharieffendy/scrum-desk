@@ -1,13 +1,13 @@
 # Scrum Desk
 
-Daily Scrum — a self-hosted morning board for your daily opening / standup, with login accounts,
+Scrum Desk — a self-hosted morning board for your daily opening / standup, with login accounts,
 a SQLite database, and JIRA Cloud integration — all in one Docker container.
 
 - **Login & users** — first run creates the admin account. Admins can create more users:
   - **Admin** — edit everything, sync JIRA, manage users
   - **Viewer** — view-only: see the board and download reports, cannot change data
 - **Start each standup** — a day only becomes a standup day when an admin presses
-  **Start daily scrum**; days never started (holidays, weekends) are "no daily scrum"
+  **Start standup**; days never started (holidays, weekends) are "no standup"
 - **Attendance per member, per day** — Present · Late (for opening) · On leave · Sick · No show
 - **Notes per member** — Yesterday · Today · Blockers, autosaved to the database
 - **JIRA Cloud sync** — pulls the current sprint; each ticket shows its **status badge**
@@ -98,7 +98,7 @@ screen needs the one-time **setup code** printed in the server log, so only some
 with access to the server can claim the admin account:
 
 ```bash
-docker compose logs daily-scrum    # look for "First-time setup code: ..."
+docker compose logs scrum-desk    # look for "First-time setup code: ..."
 ```
 
 (Or set your own with the `SETUP_CODE` environment variable.)
@@ -106,11 +106,11 @@ docker compose logs daily-scrum    # look for "First-time setup code: ..."
 Every day after that:
 
 ```bash
-docker start daily-scrum    # start (or: docker compose up -d)
-docker stop daily-scrum     # stop  (or: docker compose down)
+docker start scrum-desk    # start (or: docker compose up -d)
+docker stop scrum-desk     # stop  (or: docker compose down)
 ```
 
-Data lives in `./data/daily-scrum.db` (SQLite). Stop the container and copy the
+Data lives in `./data/scrum-desk.db` (SQLite). Stop the container and copy the
 `data` folder to back it up, or use a full backup from the app (below).
 
 The container restarts on its own after a crash, a reboot or a database restore
@@ -144,9 +144,9 @@ separate step.
 **When the app does not start** (from the folder with `docker-compose.yml`):
 
 ```bash
-docker compose stop daily-scrum
+docker compose stop scrum-desk
 docker compose run --rm -it --no-deps -v "$PWD/backup.dsbackup:/tmp/restore.dsbackup:ro" \
-  daily-scrum node scripts/restore-backup.js restore-db /tmp/restore.dsbackup --data /app/data
+  scrum-desk node scripts/restore-backup.js restore-db /tmp/restore.dsbackup --data /app/data
 docker compose up -d        # applies the restore, keeping a copy of the old database
 ```
 
@@ -157,8 +157,8 @@ then start the app. The tool asks for the password (or reads `BACKUP_PASSWORD`).
 
 ```bash
 node scripts/restore-backup.js inspect backup.dsbackup            # what is inside
-node scripts/restore-backup.js extract backup.dsbackup ./daily-scrum
-cd daily-scrum               # app + Docker files, data/daily-scrum.db, app.env
+node scripts/restore-backup.js extract backup.dsbackup ./scrum-desk
+cd scrum-desk               # app + Docker files, data/scrum-desk.db, app.env
 sudo chown -R 1000:1000 data # Linux/WSL: the container user must own it
 # copy what you need from app.env into docker-compose.yml "environment:", then:
 docker compose up -d --build
@@ -174,6 +174,11 @@ and delete it when done.
 runs as the unprivileged user uid 1000, so the `data` folder must be writable by it.
 Installs made before this change created root-owned files; fix them once with
 `sudo chown -R 1000:1000 ./data` (Linux/WSL) before starting the new image.
+
+Installs from before the rename to Scrum Desk: run `docker compose up -d --build --remove-orphans`
+once, which replaces the container under its old name (otherwise it keeps port 3001). On start the
+database file is renamed to `data/scrum-desk.db` automatically, browsers keep their saved settings,
+and older `.dsbackup` files can still be checked and restored.
 
 ### Run without Docker
 
@@ -210,7 +215,7 @@ people who need to sign in:
 | Role | Use it for | Needed? |
 | --- | --- | --- |
 | Admin | Whoever runs the app: JIRA settings, users, backups, every team. | Yes, created at first run |
-| Technical Lead | A lead who runs the daily scrum of **their own team** only. | Only when several teams share the app |
+| Technical Lead | A lead who runs the standup of **their own team** only. | Only when several teams share the app |
 | Viewer | Managers or anyone who only reads the board and downloads reports. | Optional |
 
 If you do use Technical Leads, create their accounts **before** adding members, so you can pick
@@ -307,13 +312,13 @@ them, run `npm test`, then rebuild (`docker compose up -d --build`):
 | --- | --- | --- |
 | Month names in the report file name | `MONTHS` in `public/pi-periods.js` | `JANUARY` … `DECEMBER` |
 | Default report query and prefix for new installs | `DEFAULT_TEMPLATE` / `DEFAULT_PREFIX` in `lib/pi-core.js` | Generic Done-category query / `TEAM` |
-| Fonts and colours | `public/styles.css`, `public/index.html` | Daily Scrum palette |
+| Fonts and colours | `public/styles.css`, `public/index.html` | Scrum Desk palette |
 
 **8. Server settings (`docker-compose.yml`).** Set `TZ` to your timezone (default
 `Asia/Jakarta`), change the published port (`3001:3000`) if it is taken, and see
 [the environment variables](#users--security) for HTTPS and proxies.
 
-**Check it works.** Start a daily scrum, press **Sync JIRA** and check that tickets land on the
+**Check it works.** Start a standup, press **Sync JIRA** and check that tickets land on the
 right people. Open **Reports → Sprint delivery** and press *Refresh from JIRA*. Open
 **Reports → Performance**, pick a finished period and compare one person's ticket count
 with the same query in JIRA.
@@ -347,8 +352,8 @@ Only JIRA Cloud sites (`*.atlassian.net`) are accepted.
 ## Daily routine
 
 1. Open the app and sign in — JIRA refreshes automatically.
-2. Press **Start daily scrum**. Skip this on holidays / weekends — the day then counts
-   as "no daily scrum". Started by mistake? **Cancel standup** undoes it. A missed
+2. Press **Start standup**. Skip this on holidays / weekends — the day then counts
+   as "no standup". Started by mistake? **Cancel standup** undoes it. A missed
    past day can be started afterwards (it uses the current team as its roster);
    future days cannot be started.
 3. Mark attendance chips per member (Present / Late / Leave / Sick / No show).
@@ -553,7 +558,7 @@ person's search fails, the others still load and that person is marked with JIRA
   or user deletion signs that user out everywhere.
 - Viewer accounts are enforced **server-side** — they cannot write data or sync JIRA
   even with direct API calls.
-- **Technical Lead** accounts run their own team: they write the daily scrum, add and
+- **Technical Lead** accounts run their own team: they write the standup, add and
   edit members, sync JIRA and see the KPI and Performance reports — for their team only. A member's team is its
   **Technical Lead** field (Settings → Team members → edit member; admins can be leads too).
   A lead also sees the card they linked as "This is me". Leads never see other teams,
@@ -562,7 +567,7 @@ person's search fails, the others still load and that person is marked with JIRA
   **Team** picker on the board and sprint view; "All teams" groups members per lead.
 - If two admins edit at the same time, the app merges their board changes and retries.
   After repeated conflicts it reloads the latest board and asks you to re-check your edit.
-- Forgot the admin password? Stop the container, delete `data/daily-scrum.db`
+- Forgot the admin password? Stop the container, delete `data/scrum-desk.db`
   (or the whole `data` folder), start again — you'll get a fresh first-run setup.
   Export a backup first if you need the history.
 - Keep `.env` files, API tokens, exported databases, private keys, and backups out of Git.
@@ -601,7 +606,7 @@ VPS instead.
 | JIRA not auto-refreshing | It refreshes on sign-in when credentials exist; check Settings → JIRA connection → Test connection. |
 | Too many attempts | Wait 10 minutes after 8 failed logins from the same address. |
 | `SQLITE_CANTOPEN` / permission denied on start | `data` is root-owned from an older install: `sudo chown -R 1000:1000 ./data`. |
-| Lost the setup code | `docker compose logs daily-scrum`, or restart with `SETUP_CODE` set. |
+| Lost the setup code | `docker compose logs scrum-desk`, or restart with `SETUP_CODE` set. |
 | KPI: "Could not detect the JIRA board" | No open sprint matched the sprint query — set the board ID in Settings → KPI rules (it's in the board URL: `…/boards/42`). |
 | KPI: story points all 0 | Wrong story points field — press **Detect story points field** in Settings → KPI rules, or enter the field ID. |
 | KPI: sprint marked "stale — last refresh failed" | JIRA errored for that sprint; the other sprints are kept. Press Refresh again. |

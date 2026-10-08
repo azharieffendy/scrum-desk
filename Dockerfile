@@ -1,4 +1,4 @@
-# Daily Scrum — single container: UI + auth + API + SQLite database
+# Scrum Desk — single container: UI + auth + API + SQLite database
 FROM node:22-slim
 
 WORKDIR /app

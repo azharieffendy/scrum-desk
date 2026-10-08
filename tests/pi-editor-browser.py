@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 import mimetypes
 from playwright.sync_api import sync_playwright, expect
 ROOT=Path(__file__).resolve().parents[1]/'public'
-OUT=Path('/tmp/daily-scrum-pi-editor');OUT.mkdir(exist_ok=True)
+OUT=Path('/tmp/scrum-desk-pi-editor');OUT.mkdir(exist_ok=True)
 SOURCE="project IN ('TOR - SEMERU') AND assignee = 557058:abc AND status = 'DONE' AND (\"Start date[Date]\" >= '2026-05-01' AND \"Start date[Date]\" <= '2026-08-31') OR (project IN ('SCRUM - QNB', 'SCRUM - SEMERU', 'SCRUM - BMS', 'QRIS Merchant Bank Kalteng') AND assignee = 557058:abc AND status = 'DONE' AND resolutionDate >= '2026-05-01' AND resolutionDate <= '2026-08-31') ORDER BY created DESC"
 with sync_playwright() as p:
     browser=p.chromium.launch(headless=True)

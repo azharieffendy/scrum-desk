@@ -10,7 +10,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-scrum-pisrv-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scrum-desk-pisrv-'));
 process.env.DATA_DIR = dataDir;
 for (const k of ['JIRA_SITE', 'JIRA_EMAIL', 'JIRA_API_TOKEN']) delete process.env[k];
 const db = require('../lib/db.js');

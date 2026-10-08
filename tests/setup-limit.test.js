@@ -13,7 +13,7 @@ const path = require('node:path');
 
 const PORT = 3990 + Math.floor(Math.random() * 9);
 const BASE = 'http://127.0.0.1:' + PORT;
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-scrum-setup-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scrum-desk-setup-'));
 let proc;
 
 before(async () => {

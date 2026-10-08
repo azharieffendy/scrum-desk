@@ -1,4 +1,4 @@
-/* Daily Scrum — actions, event delegation and init (loaded last).
+/* Scrum Desk — actions, event delegation and init (loaded last).
  * Classic script: shares globals with app-core.js, app-auth.js,
  * app-views.js and app.js (see index.html for the load order). */
 'use strict';
@@ -66,8 +66,8 @@ function shiftDay(n) {
 }
 
 function exportData() {
-  const payload = { app: 'daily-scrum', version: 1, exportedAt: new Date().toISOString(), state };
-  downloadText('daily-scrum-backup-' + todayISO() + '.json', JSON.stringify(payload, null, 2));
+  const payload = { app: 'scrum-desk', version: 1, exportedAt: new Date().toISOString(), state };
+  downloadText('scrum-desk-backup-' + todayISO() + '.json', JSON.stringify(payload, null, 2));
   toast('Backup downloaded', 'success');
 }
 
@@ -77,7 +77,7 @@ function importData(file) {
     let payload;
     try { payload = JSON.parse(reader.result); } catch (_) { toast('That file is not valid JSON', 'error'); return; }
     const incoming = payload && payload.state ? payload.state : payload;
-    if (!incoming || !Array.isArray(incoming.members)) { toast('Not a Daily Scrum backup file', 'error'); return; }
+    if (!incoming || !Array.isArray(incoming.members)) { toast('Not a Scrum Desk backup file', 'error'); return; }
     if (!await askConfirm({
       title: 'Import this backup?',
       message: 'Backup from ' + (payload.exportedAt ? new Date(payload.exportedAt).toLocaleString() : 'an unknown date') +
@@ -297,7 +297,7 @@ const clickActions = {
     ui.compact = !ui.compact;
     ui.editingNote = null;
     ui.ticketExpansion.clear(); // density decides ticket expansion again
-    try { localStorage.setItem('dailyscrum.compact.v1', JSON.stringify(ui.compact)); } catch (_) { /* private storage */ }
+    try { localStorage.setItem('scrumdesk.compact.v1', JSON.stringify(ui.compact)); } catch (_) { /* private storage */ }
     render();
     $('[data-action="board-density"]').focus({ preventScroll: true });
   },
@@ -306,7 +306,7 @@ const clickActions = {
     if (ui.boardView === view) return;
     ui.boardView = view;
     ui.editingNote = null;
-    try { localStorage.setItem('dailyscrum.boardview.v1', JSON.stringify(view)); } catch (_) { /* private storage */ }
+    try { localStorage.setItem('scrumdesk.boardview.v1', JSON.stringify(view)); } catch (_) { /* private storage */ }
     render();
     const btn = $(`[data-action="board-view"][data-view="${view}"]`);
     if (btn) btn.focus({ preventScroll: true });
@@ -382,7 +382,7 @@ const clickActions = {
   'settings-tab': (el) => { ui.settingsTab = el.dataset.tab; render(); },
   'sprint-mode': (el) => {
     ui.sprintMode = el.dataset.mode === 'list' ? 'list' : 'board';
-    try { localStorage.setItem('dailyscrum.sprintMode.v1', JSON.stringify(ui.sprintMode)); } catch (_) { /* private mode */ }
+    try { localStorage.setItem('scrumdesk.sprintMode.v1', JSON.stringify(ui.sprintMode)); } catch (_) { /* private mode */ }
     render();
   },
   'sprint-done': (el) => {

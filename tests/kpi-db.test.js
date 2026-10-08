@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-scrum-kpidb-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scrum-desk-kpidb-'));
 process.env.DATA_DIR = dataDir;
 const db = require('../lib/db.js');
 

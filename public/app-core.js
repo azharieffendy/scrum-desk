@@ -1,5 +1,5 @@
 /* ================================================================
-   Daily Scrum — app logic (no framework, no build step)
+   Scrum Desk — app logic (no framework, no build step)
    Views: Today (board) · Sprint · History · Report · Settings · Login/Setup
    Storage: server SQLite database via /api/state (falls back to
    browser localStorage when no server API exists, e.g. static hosting)
@@ -32,9 +32,9 @@ const fmtShort = (iso) => iso ? new Date(iso).toLocaleDateString('en-GB', { day:
 
 /* ---------------- constants ---------------- */
 
-const LS_STATE = 'dailyscrum.state.v1';
-const LS_CREDS = 'dailyscrum.creds.v1';
-const LS_MIGRATION_PENDING = 'dailyscrum.migration-pending.v1';
+const LS_STATE = 'scrumdesk.state.v1';
+const LS_CREDS = 'scrumdesk.creds.v1';
+const LS_MIGRATION_PENDING = 'scrumdesk.migration-pending.v1';
 
 const PALETTE = ['#1066A0', '#108890', '#678D61', '#AA5019', '#A53956', '#594D7F', '#B24D7A', '#536C54'];
 
@@ -46,7 +46,7 @@ const ATT = {
   noshow:  { label: 'No show', title: 'Did not show up for the opening', key: 'n' },
 };
 
-const LOGO_SVG = '<svg viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#168edf"/><path d="M14 22c0-5 3-8 8-8h20c5 0 8 3 8 8v12c0 5-3 8-8 8H30l-8 7v-7h-.5c-4.5 0-7.5-3-7.5-8z" fill="#fff" opacity=".18"/><path d="M25 28l5 5 10-10" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const LOGO_SVG = '<svg viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#168edf"/><rect x="14" y="13" width="10" height="7" rx="2" fill="#fff"/><rect x="14" y="23" width="10" height="7" rx="2" fill="#fff"/><rect x="14" y="33" width="10" height="7" rx="2" fill="#fff"/><rect x="27" y="23" width="10" height="7" rx="2" fill="#fff" fill-opacity=".7"/><rect x="27" y="33" width="10" height="7" rx="2" fill="#fff" fill-opacity=".7"/><rect x="40" y="33" width="10" height="7" rx="2" fill="#1fc4c7"/><rect x="9" y="44" width="46" height="5" rx="2.5" fill="#fff"/><rect x="14" y="49" width="4" height="7" rx="1.5" fill="#fff" fill-opacity=".7"/><rect x="46" y="49" width="4" height="7" rx="1.5" fill="#fff" fill-opacity=".7"/></svg>';
 
 /* ---------------- state ---------------- */
 
@@ -68,12 +68,12 @@ let storageMode = 'server'; // 'server' (database) or 'local' (browser localStor
 
 // team: '' = everyone, a lead's user id, or 'none' (members without a lead)
 const ui = {
-  compact: loadJSON('dailyscrum.compact.v1', true) !== false,
-  boardView: loadJSON('dailyscrum.boardview.v1', 'cards') === 'sheet' ? 'sheet' : 'cards',
+  compact: loadJSON('scrumdesk.compact.v1', true) !== false,
+  boardView: loadJSON('scrumdesk.boardview.v1', 'cards') === 'sheet' ? 'sheet' : 'cards',
   memberSearch: '', editingNote: null, ticketExpansion: new Map(), ticketFilters: new Map(), sprintCollapsed: new Set(),
   view: 'today', date: todayISO(), month: todayISO().slice(0, 7),
   statusPick: '', todayFilter: '', attMenu: null, settingsTab: '', team: '',
-  sprintMode: loadJSON('dailyscrum.sprintMode.v1', 'board') === 'list' ? 'list' : 'board',
+  sprintMode: loadJSON('scrumdesk.sprintMode.v1', 'board') === 'list' ? 'list' : 'board',
   sprintDoneOpen: new Set(), sprintMapOpen: false, histMonth: '', histSel: '', jiraDraft: null,
   blockerMember: '', blockerAll: false,
 };
@@ -204,7 +204,7 @@ function entriesHaveContent(day) {
     ['yesterday', 'today', 'blockers'].some((k) => (e[k] || '').trim()) || e.attendance);
 }
 
-/** A day is a standup day only once an admin pressed "Start daily scrum". */
+/** A day is a standup day only once an admin pressed "Start standup". */
 function isStarted(day) {
   return Boolean(day && day.startedAt);
 }

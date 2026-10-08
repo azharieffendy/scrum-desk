@@ -1,7 +1,7 @@
 """Optional UI regression check: python3 tests/ui-browser.py
 Requires Python Playwright and its Chromium browser. Uses only synthetic data;
 all requests are intercepted, with no server, database, or external network.
-Screenshots are written under /tmp/daily-scrum-ui-check.
+Screenshots are written under /tmp/scrum-desk-ui-check.
 """
 from pathlib import Path
 from urllib.parse import urlparse
@@ -10,7 +10,7 @@ import mimetypes
 from playwright.sync_api import sync_playwright, expect
 
 ROOT = Path(__file__).resolve().parents[1] / 'public'
-OUT = Path('/tmp/daily-scrum-ui-check')
+OUT = Path('/tmp/scrum-desk-ui-check')
 OUT.mkdir(exist_ok=True)
 
 SEED = """() => {
@@ -170,7 +170,7 @@ with sync_playwright() as p:
     expect(tickets).to_have_attribute('open', '')  # full view expands tickets
     page.locator('[data-action="board-density"]').click()
     assert not tickets.evaluate('(el) => el.open')
-    assert page.evaluate("localStorage.getItem('dailyscrum.compact.v1')") == 'true'
+    assert page.evaluate("localStorage.getItem('scrumdesk.compact.v1')") == 'true'
 
     # Ticket filters apply to one member, preserve focus/notes, and leave history alone.
     tickets.locator('summary').click()

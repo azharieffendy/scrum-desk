@@ -24,7 +24,7 @@ const CLI = path.join(__dirname, '..', 'scripts', 'restore-backup.js');
 const tmpDirs = [];
 
 function tmpDir(label) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-scrum-backup-' + label + '-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'scrum-desk-backup-' + label + '-'));
   tmpDirs.push(dir);
   return dir;
 }
@@ -33,17 +33,17 @@ after(() => { for (const d of tmpDirs) fs.rmSync(d, { recursive: true, force: tr
 
 /* ---------------- file format ---------------- */
 
-const sampleBundle = () => format.packBundle({ app: 'daily-scrum', createdAt: '2026-01-01T00:00:00.000Z' },
-  [{ path: 'db/daily-scrum.db', data: Buffer.from('database bytes') }, { path: 'app/server.js', data: Buffer.from('// app') }]);
+const sampleBundle = () => format.packBundle({ app: 'scrum-desk', createdAt: '2026-01-01T00:00:00.000Z' },
+  [{ path: 'db/scrum-desk.db', data: Buffer.from('database bytes') }, { path: 'app/server.js', data: Buffer.from('// app') }]);
 
 test('a backup decrypts with its password and every file comes back intact', async () => {
   const file = await format.encrypt(sampleBundle(), PASSWORD, FAST_KDF);
   assert.ok(file.subarray(0, 9).equals(format.MAGIC));
   assert.ok(!file.includes(Buffer.from('database bytes')), 'contents are encrypted');
   const out = await format.decrypt(file, PASSWORD);
-  assert.equal(out.manifest.app, 'daily-scrum');
+  assert.equal(out.manifest.app, 'scrum-desk');
   assert.equal(out.manifest.format, format.FORMAT);
-  assert.equal(out.files.get('db/daily-scrum.db').toString(), 'database bytes');
+  assert.equal(out.files.get('db/scrum-desk.db').toString(), 'database bytes');
   assert.equal(out.files.get('app/server.js').toString(), '// app');
 });
 
@@ -69,7 +69,7 @@ test('a damaged backup is refused: changed byte, changed header, truncated, not 
   await assert.rejects(format.decrypt(header, PASSWORD), (e) => ['password', 'damaged'].includes(e.code));
   await assert.rejects(format.decrypt(file.subarray(0, file.length - 10), PASSWORD), (e) => e.status === 400);
   await assert.rejects(format.decrypt(file.subarray(0, 12), PASSWORD), (e) => e.code === 'damaged');
-  await assert.rejects(format.decrypt(Buffer.from('{"app":"daily-scrum"}'), PASSWORD), (e) => e.code === 'damaged');
+  await assert.rejects(format.decrypt(Buffer.from('{"app":"scrum-desk"}'), PASSWORD), (e) => e.code === 'damaged');
 });
 
 function withHeader(file, edit) {
@@ -290,13 +290,13 @@ test('a weak backup password is refused', async () => {
 test('a full backup downloads as an encrypted file with the database, configuration and app files', async () => {
   const r = await A.api('POST', '/api/backup/create', { cookie: ck.a, body: { password: PASSWORD } });
   assert.equal(r.status, 200);
-  assert.match(r.headers.get('content-disposition'), /attachment; filename="daily-scrum-full-backup-.*\.dsbackup"/);
+  assert.match(r.headers.get('content-disposition'), /attachment; filename="scrum-desk-full-backup-.*\.dsbackup"/);
   backupFile = r.buf;
   assert.ok(!backupFile.includes(Buffer.from('SECRET-TOKEN')));
   const out = await format.decrypt(backupFile, PASSWORD);
   assert.equal(out.manifest.createdBy, 'owner');
   assert.deepEqual(out.manifest.included, ['database', 'configuration', 'application']);
-  for (const p of ['db/daily-scrum.db', 'config/env.json', 'RESTORE.txt', 'manifest.json', 'app/server.js', 'app/lib/db.js', 'app/scripts/restore-backup.js', 'app/Dockerfile']) {
+  for (const p of ['db/scrum-desk.db', 'config/env.json', 'RESTORE.txt', 'manifest.json', 'app/server.js', 'app/lib/db.js', 'app/scripts/restore-backup.js', 'app/Dockerfile']) {
     assert.ok(out.files.has(p), p);
   }
   assert.ok(![...out.files.keys()].some((p) => p.includes('node_modules') || p.startsWith('app/data/') || p.startsWith('app/.git')));
@@ -318,7 +318,7 @@ test('checking a backup with a wrong password or a damaged file changes nothing'
   assert.equal(bad.status, 400);
   const junk = await B.api('POST', '/api/backup/inspect', { cookie: ck.b, body: { file: b64(Buffer.from('hello')), password: PASSWORD } });
   assert.equal(junk.status, 400);
-  assert.match(junk.data.error, /not a Daily Scrum full backup/);
+  assert.match(junk.data.error, /not a Scrum Desk full backup/);
   assert.equal((await B.api('POST', '/api/backup/restore', { cookie: ck.b, body: { id: 'nope', confirm: 'RESTORE' } })).status, 409);
   assert.equal((await B.api('GET', '/api/auth/status', { cookie: ck.b })).data.authenticated, true);
   assert.equal(fs.existsSync(path.join(dirB, apply.PENDING_INFO)), false);
@@ -389,7 +389,7 @@ test('the recovery tool inspects, extracts and queues a restore while the app is
   const out = path.join(tmpDir('extract'), 'app');
   const extract = spawnSync(process.execPath, [CLI, 'extract', file, out], { env, encoding: 'utf8' });
   assert.equal(extract.status, 0, extract.stderr);
-  for (const p of ['server.js', 'Dockerfile', 'data/daily-scrum.db', 'app.env', 'RESTORE.txt']) assert.ok(fs.existsSync(path.join(out, p)), p);
+  for (const p of ['server.js', 'Dockerfile', 'data/scrum-desk.db', 'app.env', 'RESTORE.txt']) assert.ok(fs.existsSync(path.join(out, p)), p);
   assert.equal(spawnSync(process.execPath, [CLI, 'extract', file, out], { env }).status, 1, 'never unpacks over existing files');
 
   const data = tmpDir('cli-data');
@@ -413,4 +413,47 @@ test('a start interrupted right after the swap reports the restore as done', () 
   assert.equal(result.ok, true);
   assert.equal(readNote(live), 'from backup');
   assert.equal(apply.hasPendingRestore(dir), false);
+});
+
+/* ---------------- data from before the rename to Scrum Desk ---------------- */
+
+test('a database saved under the old daily-scrum.db name is moved, with its WAL, before it is opened', () => {
+  const dir = tmpDir('legacy-name');
+  makeDb(path.join(dir, apply.LEGACY_DB_NAME), { note: 'old name' });
+  fs.writeFileSync(path.join(dir, apply.LEGACY_DB_NAME + '-wal'), '');
+  assert.equal(apply.migrateLegacyDbName(dir), true);
+  assert.equal(readNote(path.join(dir, apply.DB_NAME)), 'old name');
+  assert.ok(fs.existsSync(path.join(dir, apply.DB_NAME + '-wal')));
+  assert.ok(!fs.existsSync(path.join(dir, apply.LEGACY_DB_NAME)));
+  assert.equal(apply.migrateLegacyDbName(dir), false, 'nothing left to move');
+
+  makeDb(path.join(dir, apply.LEGACY_DB_NAME), { note: 'stray old copy' });
+  const logs = [];
+  assert.equal(apply.migrateLegacyDbName(dir, (m) => logs.push(m)), false, 'never replaces a database with the new name');
+  assert.equal(readNote(path.join(dir, apply.DB_NAME)), 'old name');
+  assert.match(logs[0], /using scrum-desk\.db/);
+});
+
+test('backups made before the rename are still recognised, extracted and restored', async () => {
+  const src = path.join(tmpDir('legacy-src'), 'old.db');
+  makeDb(src, { note: 'from an old backup' });
+  const bundle = format.packBundle({ app: 'daily-scrum', createdAt: '2026-01-01T00:00:00.000Z' },
+    [{ path: 'db/daily-scrum.db', data: fs.readFileSync(src) }, { path: 'app/server.js', data: Buffer.from('// app') }]);
+  const file = path.join(tmpDir('legacy-cli'), 'old.dsbackup');
+  fs.writeFileSync(file, await format.encrypt(bundle, PASSWORD, FAST_KDF));
+  const env = Object.assign({}, process.env, { BACKUP_PASSWORD: PASSWORD });
+
+  const out = path.join(tmpDir('legacy-extract'), 'app');
+  const extract = spawnSync(process.execPath, [CLI, 'extract', file, out], { env, encoding: 'utf8' });
+  assert.equal(extract.status, 0, extract.stderr);
+  assert.equal(readNote(path.join(out, 'data', 'scrum-desk.db')), 'from an old backup');
+
+  const data = tmpDir('legacy-data');
+  makeDb(path.join(data, apply.DB_NAME), { note: 'current' });
+  const restore = spawnSync(process.execPath, [CLI, 'restore-db', file, '--data', data], { env, encoding: 'utf8' });
+  assert.equal(restore.status, 0, restore.stderr);
+  assert.equal(apply.applyPendingRestore(data).ok, true);
+  assert.equal(readNote(path.join(data, apply.DB_NAME)), 'from an old backup');
+
+  assert.equal(format.isAppBackup({ app: 'something-else' }), false);
 });

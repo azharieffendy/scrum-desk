@@ -143,7 +143,7 @@ async function onFullBackupSubmit(form) {
     const blob = await res.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = filenameFrom(res, 'daily-scrum-full-backup.dsbackup');
+    a.download = filenameFrom(res, 'scrum-desk-full-backup.dsbackup');
     document.body.appendChild(a);
     a.click();
     a.remove();

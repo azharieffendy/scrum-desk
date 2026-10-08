@@ -9,7 +9,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'daily-scrum-db-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'scrum-desk-db-'));
 process.env.DATA_DIR = dataDir;
 const db = require('../lib/db.js');
 
@@ -186,7 +186,7 @@ test('sessions are stored by a hash of the token, never the token itself', () =>
   assert.equal(db.getSessionUser(token).username, 'sessionuser');
 
   const Database = require('better-sqlite3');
-  const raw = new Database(path.join(dataDir, 'daily-scrum.db'), { readonly: true });
+  const raw = new Database(path.join(dataDir, 'scrum-desk.db'), { readonly: true });
   const stored = raw.prepare('SELECT token_hash AS token FROM sessions WHERE user_id = ?').all(userId).map((r) => r.token);
   raw.close();
   assert.equal(stored.length, 2);

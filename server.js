@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * Daily Scrum — single local server (used by the Docker image).
+ * Scrum Desk — single local server (used by the Docker image).
  * One process serves everything:
  *   - static UI            (public/)
  *   - auth API             (/api/auth/*)      login/session, DB-backed
@@ -219,7 +219,7 @@ async function handleAuth(req, res, url) {
     if (failCount(setupKey) >= MAX_SETUP_FAILS_PER_IP) return sendJson(res, 429, { error: 'Too many attempts — wait 10 minutes.' });
     if (!safeEqual(String(body.setupCode || '').trim(), code)) {
       recordFailure(setupKey);
-      return sendJson(res, 403, { error: 'Wrong setup code. It is printed in the server log (docker compose logs daily-scrum).' });
+      return sendJson(res, 403, { error: 'Wrong setup code. It is printed in the server log (docker compose logs scrum-desk).' });
     }
     const v = validateCreds(body.username, body.password);
     if (v) return sendJson(res, 400, { error: v });
@@ -614,9 +614,9 @@ setInterval(db.purgeExpiredSessions, 60 * 60000).unref();
 
 server.listen(PORT, () => {
   console.log('');
-  console.log('  Daily Scrum is running');
+  console.log('  Scrum Desk is running');
   console.log('  ->  http://localhost:' + PORT);
-  console.log('  Database: ' + path.join(db.DATA_DIR, 'daily-scrum.db'));
+  console.log('  Database: ' + path.join(db.DATA_DIR, 'scrum-desk.db'));
   const code = currentSetupCode();
   if (code) {
     console.log('');
