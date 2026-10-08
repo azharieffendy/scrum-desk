@@ -183,7 +183,7 @@ let saveInFlight = false;
 
 /** Edits on this tab the server does not have yet (pending, saving or failed). */
 function hasUnsavedWork() {
-  if (jiraDraftDirty()) return true;
+  if (jiraDraftDirty() || (typeof piDraftDirty === 'function' && piDraftDirty())) return true;
   if (storageMode !== 'server' || !canEdit()) return false;
   if (persistTimer || persistSoon.pending() || persistQueued || saveInFlight) return true;
   return boardDiffersFromSaved();

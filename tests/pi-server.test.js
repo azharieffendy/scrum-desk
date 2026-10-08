@@ -293,3 +293,39 @@ test('each period length is saved separately, so switching back keeps the 4-mont
   assert.equal(searches.length, 0, 'no JIRA search');
   assert.equal(back.cachedAt, fourMonths.generatedAt);
 });
+
+test('draft test counts all pages without saving the query or report cache', async () => {
+  const before = db.loadState().settings.piJql;
+  const svc = service();
+  const template = "project = OTHER AND assignee = '{assignee}' AND status = 'DONE' AND resolutionDate >= '{start}' AND resolutionDate <= '{end}'";
+  const out = await svc.handleRequest({method:'POST',path:'/api/pi/test',admin:true,body:{person:'m2',period:'2026-P2',template}});
+  assert.equal(out.status,200);assert.equal(out.payload.count,2);assert.equal(searches.length,2);
+  assert.match(out.payload.jql,/project = OTHER/);assert.match(out.payload.jql,/resolutionDate < '2026-09-01'/);
+  assert.equal(new URL(out.payload.url).searchParams.get('jql'),out.payload.jql);
+  assert.equal(db.loadState().settings.piJql,before);
+  searches.length=0;await get(svc);assert.ok(searches.length>0,'testing creates no saved report');
+});
+test('draft test stops paging at 1,000 tickets and says the count is a lower bound', async () => {
+  byAssignee['acc-2'] = Array.from({ length: 12 }, (_, p) => Array.from({ length: 100 }, (_, i) => raw('BIG-' + (p * 100 + i), 60, 1)));
+  const template = "assignee = '{assignee}' AND resolutionDate >= '{start}' AND resolutionDate <= '{end}'";
+  const out = await service().handleRequest({ method: 'POST', path: '/api/pi/test', admin: true, body: { person: 'm2', period: '2026-P2', template } });
+  assert.equal(out.status, 200);
+  assert.equal(out.payload.count, 1000);
+  assert.equal(out.payload.more, true);
+  assert.equal(searches.length, 10);
+});
+test('draft tests reject invalid drafts, viewers and members outside team before JIRA calls',async()=>{
+ const svc=service(),body={person:'m1',period:'2026-P2',template:require('../lib/pi-core').DEFAULT_TEMPLATE};
+ for(const [opts,status] of [[{admin:false},403],[{team:new Set(['m2'])},404],[{body:{...body,template:'broken ('}},400],[{method:'GET'},405]]){
+  const r=await svc.handleRequest({method:'POST',path:'/api/pi/test',admin:true,body,...opts});assert.equal(r.status,status);
+ }assert.equal(searches.length,0);
+});
+test('builder options load paged projects and date fields without exposing credentials',async()=>{
+ let page = 0;
+ on(/^\/rest\/api\/3\/project\/search/,()=>page++ === 0?{values:[{key:'TOR',name:'TOR - SEMERU',id:'1'}],total:2,isLast:false}:{values:[{key:'QNB',name:'SCRUM - QNB',id:'2'}],total:2,isLast:true});
+ on(/^\/rest\/api\/3\/status$/,[{id:'1',name:'DONE',statusCategory:{key:'done'}}]);
+ on(/^\/rest\/api\/3\/field$/,[{id:'customfield_10015',name:'Start date',schema:{type:'date'}},{id:'customfield_10020',name:'Story points',schema:{type:'number'}}]);
+ const r=await service().handleRequest({method:'GET',path:'/api/pi/options',admin:true});
+ assert.equal(r.status,200);assert.equal(r.payload.projects.length,2);assert.ok(r.payload.fields.some(f=>f.value==='cf[10015]'));assert.ok(!r.payload.fields.some(f=>f.value==='cf[10020]'));
+ assert.ok(!JSON.stringify(r.payload).includes('secret'));
+});

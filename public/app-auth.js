@@ -149,6 +149,7 @@ async function enterBoard() {
   ui.editingNote = null;
   ui.memberSearch = '';
   ui.jiraDraft = null;
+  piEditorUi.draft = null; piEditorUi.options = null; piEditorUi.source = ''; piEditorUi.account = ''; piEditorUi.start = ''; piEditorUi.end = ''; piEditorUi.convertError = ''; piEditorUi.optionsError = ''; piEditorUi.conversion = null; piEditorUi.member = ''; piEditorUi.period = ''; piEditorInvalidate();
   saveMessage = 'All changes saved';
   ui.date = todayISO();
   try { await bootStorage(); }

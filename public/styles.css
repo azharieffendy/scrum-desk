@@ -1496,3 +1496,16 @@ button.sheet-note:hover { border-color: var(--line); background: var(--bg); }
   .ks-row > .kbar { grid-column: 1 / -1; grid-row: 2; }
   .pi-inline { padding-left: 18px; }
 }
+
+/* Performance query editor */
+.pi-editor-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:14px; margin:12px 0; }
+.pi-converter { border:1px solid var(--line); border-radius:8px; padding:14px; margin:18px 0; }
+.pi-converter summary { cursor:pointer; font-weight:600; }
+.pi-rule { border:1px solid var(--line); border-radius:8px; margin:12px 0; padding:14px; min-width:0; }
+.pi-rule legend { padding:0 6px; font-weight:600; }
+.pi-jql { white-space:pre-wrap; overflow-wrap:anywhere; max-height:350px; overflow:auto; }
+.pi-table-wrap { overflow-x:auto; margin:14px 0; }
+.pi-editor .settings-save-bar { position:static; display:flex; flex-wrap:wrap; gap:12px; margin:16px 0; }
+.pi-editor .settings-save-bar span { margin-right:auto; }
+.pi-template[readonly] { background:var(--line-soft); }
+@media(max-width:560px) { .pi-editor-grid { grid-template-columns:minmax(0,1fr); } }

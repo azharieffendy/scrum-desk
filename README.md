@@ -383,6 +383,27 @@ changes, or a member's role, name, email or JIRA mapping changes while per-role 
 
 ## Performance report
 
+**Settings → Performance report** offers a rule builder and **Edit JQL directly**.
+Each rule chooses projects, completion status and the date field; rules are joined
+with OR. Load choices from JIRA to select projects and custom date fields. Queries
+with extra conditions remain editable as JQL; the builder never removes unsupported
+conditions. The included members are shown beside **Manage report members**.
+
+Use **Paste a JIRA query** for an existing working query: find its account and dates,
+choose the values to replace, review the original and converted template, then click
+**Use this template**. Conversion adds parentheses while preserving AND/OR logic.
+Other accounts and dates remain literal. The placeholder table inserts values into
+JQL and shows the dates and account for the selected test period.
+
+Edits remain a draft until **Save changes**. **Discard** returns to the current saved
+query. Errors appear beside the editor; fixed accounts and dates are suggestions,
+since some queries intentionally use them. **Test query** runs the current draft
+for one member and period without saving it or modifying cached reports. It shows
+an exact count across all JIRA result pages, the test time, the actual expanded JQL
+and **Open in JIRA**. Editing the draft, member or period clears the previous result.
+Counts reflect the connected JIRA account's permissions and current issue data.
+
+
 **Reports → Performance** (admins and Technical Leads, server mode) builds the report
 sent after each period. The period length is set in Settings → Performance report → **Period length**:
 1, 2, 3, **4** (the default), 6 or 12 months. The year is split evenly starting in January,
@@ -409,8 +430,8 @@ so switching back loses nothing.
 - **Ranked people:** each row compares story points, hours and ticket counts. **Tickets**
   opens a person's list with a find-by-key box (`DEMO-4099`, just `4099`, or several
   separated by commas). Sort by date or sprint from the buttons above the list.
-- **Checking a count:** Settings → Performance report → *Preview the query* shows the filled-in JQL for one
-  person; paste it into JIRA's issue search and compare the number of tickets.
+- **Checking a count:** Settings → Performance report → *Test query* checks the current draft for one
+  person and period; use Open in JIRA to compare the count.
 
 A **finished** period is saved per person the first time it is read and shown from there
 afterwards (marked *Saved*); **Refresh from JIRA** (a POST, so links and prefetches never trigger it) reads it again. The current period is always

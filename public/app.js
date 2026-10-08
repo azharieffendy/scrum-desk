@@ -248,15 +248,21 @@ async function resetStatusColors() {
 
 /** Admin-only on top of EDIT_ACTIONS: JIRA connection, backups, global KPI/PI settings, status colours. */
 const ADMIN_ACTIONS = ['reset-jql', 'jira-save', 'jira-discard', 'import-btn', 'erase', 'test-conn', 'export',
-  'kpi-detect-field', 'status-color-pick', 'status-color-set', 'status-color-reset', 'pi-reset-jql', 'pi-preview',
+  'kpi-detect-field', 'status-color-pick', 'status-color-set', 'status-color-reset', 'pi-reset-jql', 'pi-preview', 'pi-save', 'pi-discard', 'pi-analyze', 'pi-convert', 'pi-use-conversion', 'pi-builder', 'pi-direct', 'pi-insert', 'pi-rule-add', 'pi-rule-remove', 'pi-options',
   'kpi-role-add', 'kpi-role-remove'];
 
 const EDIT_ACTIONS = ['add-member', 'edit-member', 'remove-member', 'sync',
   'start-day', 'cancel-day', 'edit-note', 'finish-note', 'delete-day', 'reset-jql', 'jira-save', 'jira-discard', 'import-btn', 'erase', 'test-conn', 'export',
   'kpi-detect-field', 'status-color-pick', 'status-color-set', 'status-color-reset',
-  'pi-generate', 'pi-download', 'pi-reset-jql', 'pi-preview', 'kpi-role-add', 'kpi-role-remove'];
+  'pi-generate', 'pi-download', 'pi-reset-jql', 'pi-preview', 'pi-save', 'pi-discard', 'pi-analyze', 'pi-convert', 'pi-use-conversion', 'pi-builder', 'pi-direct', 'pi-insert', 'pi-rule-add', 'pi-rule-remove', 'pi-options', 'kpi-role-add', 'kpi-role-remove'];
 
 const clickActions = {
+  'pi-save': () => piEditorSave(), 'pi-discard': () => piEditorDiscard(),
+  'pi-analyze': () => piEditorAnalyze(), 'pi-convert': () => piEditorConvert(),
+  'pi-use-conversion': () => piEditorUseConversion(), 'pi-builder': () => piEditorBuilder(),
+  'pi-direct': () => piEditorDirect(), 'pi-insert': el => piEditorInsert(el),
+  'pi-rule-add': () => piEditorAddRule(), 'pi-rule-remove': el => piEditorRemoveRule(el),
+  'pi-options': () => piEditorOptions(),
   'theme': () => toggleTheme(),
   'kpi-role-add': () => {
     if (document.querySelectorAll('[data-role-rule]').length >= KPI_ROLE_RULES_MAX) {
@@ -552,6 +558,7 @@ function moveSettingsTab(e) {
 
 function onDocInput(e) {
   const t = e.target;
+  if (canAdmin() && piEditorInput(t)) return;
   if (t.id === 'memberSearch') { ui.memberSearch = t.value; applyMemberSearch(); return; }
   if (t.dataset && t.dataset.jira) {
     jiraDraftValues()[t.dataset.jira] = t.value;
@@ -582,6 +589,7 @@ function refreshBlockerMarks(t, day) {
 
 function onDocChange(e) {
   const t = e.target;
+  if (canAdmin() && piEditorChange(t)) return;
   if (t.id === 'dateInput' && t.value) { ui.date = t.value; render(); return; }
   if (t.id === 'monthInput' && isValidMonth(t.value)) { ui.month = t.value; render(); return; }
   if (t.id === 'teamFilter') { ui.team = t.value; render(); return; }
@@ -600,13 +608,12 @@ function onDocChange(e) {
     return;
   }
   if (t.dataset.setting === 'jql') { state.settings.jql = t.value.trim(); saveState({ quiet: true }); return; }
-  if (t.dataset.setting === 'piJql') { savePiTemplate(t); return; }
   if (t.dataset.setting === 'piPrefix') { state.settings.piPrefix = t.value.trim(); saveState({ quiet: true }); return; }
   if (t.dataset.setting === 'piPeriodMonths') {
     // the report page then opens on the last finished period of the new length
     state.settings.piPeriodMonths = Number(t.value);
+    piEditorUi.period = ''; piEditorInvalidate();
     piUi.period = '';
-    piPreviewUi.result = null;
     saveState({ quiet: true });
     render();
     return;
