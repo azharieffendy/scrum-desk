@@ -1087,11 +1087,8 @@ button.roll-person:active { transform: scale(.98); }
 .avatar.avatar-roll { width: 34px; height: 34px; font-size: 12.5px; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--present-border); }
 .roll-text { display: flex; flex-direction: column; line-height: 1.2; }
 .roll-name { font: 600 13px var(--font-ui); }
-.roll-att { font: 700 10.5px var(--font-ui); text-transform: uppercase; letter-spacing: .05em; color: var(--present-ink); }
-.roll-person.att-late   .roll-att { color: var(--att-late); }
-.roll-person.att-leave  .roll-att { color: var(--att-leave); }
-.roll-person.att-sick   .roll-att { color: var(--att-sick); }
-.roll-person.att-noshow .roll-att { color: var(--att-noshow); }
+.roll-hint { font-size: 12px; color: var(--muted); }
+.roll-text .att-pill { margin-top: 3px; }
 .roll-person.att-late   .avatar-roll { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--att-late); }
 .roll-person.att-leave  .avatar-roll { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--att-leave); opacity: .55; }
 .roll-person.att-sick   .avatar-roll { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--att-sick); opacity: .55; }
@@ -1110,7 +1107,41 @@ button.roll-person:active { transform: scale(.98); }
   border-left: 1px solid var(--line); background: var(--surface); padding: 18px 18px 0;
 }
 .blocker-flag { display: none; }
-.member-head > .att-badge { grid-column: 2; justify-self: start; }
+.member-head > .att-pick { grid-column: 2; justify-self: start; }
+
+/* attendance status: a pill (always shown) that opens a menu of every status */
+.att-pick { display: inline-flex; }
+.att-pill { display: inline-flex; align-items: center; gap: 5px; font: 700 10.5px/1 var(--font-ui); text-transform: uppercase; letter-spacing: .05em;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid var(--present-border); background: var(--present-bg); color: var(--present-ink); white-space: nowrap; }
+.att-pill.att-late   { background: var(--att-late-bg);   border-color: var(--late-border);   color: var(--att-late); }
+.att-pill.att-leave  { background: var(--att-leave-bg);  border-color: var(--leave-border);  color: var(--att-leave); }
+.att-pill.att-sick   { background: var(--att-sick-bg);   border-color: var(--sick-border);   color: var(--att-sick); }
+.att-pill.att-noshow { background: var(--att-noshow-bg); border-color: var(--noshow-border); color: var(--att-noshow); }
+.att-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+.att-caret { font-size: 10px; opacity: .7; margin-left: 1px; transition: transform .12s; }
+.att-trigger { appearance: none; border: 0; background: transparent; padding: 0; font: inherit; cursor: pointer; border-radius: 999px; }
+.att-trigger .att-pill { transition: filter .12s, box-shadow .12s; }
+.att-trigger:hover .att-pill, button.roll-person:hover .att-pill { box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent); }
+.att-trigger:active .att-pill { filter: brightness(.96); }
+[aria-expanded="true"] .att-caret { transform: rotate(180deg); }
+.att-menu { position: fixed; z-index: 70; display: flex; flex-direction: column; gap: 2px; padding: 6px; min-width: 232px; max-width: calc(100vw - 16px);
+  background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); }
+.att-option { appearance: none; border: 0; background: transparent; font: inherit; color: var(--ink); cursor: pointer; text-align: left;
+  display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; min-height: 44px; }
+.att-option:hover, .att-option:focus-visible { background: var(--hover); outline: none; }
+.att-option:focus-visible { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent); }
+.att-option .att-dot { width: 10px; height: 10px; color: var(--present-border); }
+.att-option.att-late   .att-dot { color: var(--att-late); }
+.att-option.att-leave  .att-dot { color: var(--att-leave); }
+.att-option.att-sick   .att-dot { color: var(--att-sick); }
+.att-option.att-noshow .att-dot { color: var(--att-noshow); }
+.att-option-text { display: flex; flex-direction: column; font: 600 13.5px var(--font-ui); line-height: 1.25; }
+.att-option-text small { font-weight: 400; font-size: 12px; color: var(--muted); }
+.att-option[aria-checked="true"] { background: var(--line-soft); }
+.att-option[aria-checked="true"] .att-option-text::after { content: "Current"; font: 700 10px var(--font-ui); text-transform: uppercase; letter-spacing: .05em; color: var(--accent); margin-top: 2px; }
+.att-option kbd { font: 600 11px var(--font-ui); color: var(--muted); border: 1px solid var(--line); border-radius: 5px; padding: 2px 6px; background: var(--surface); }
+@media (hover: none) { .att-option kbd { display: none; } }
+@media (prefers-reduced-motion: reduce) { .att-caret, .att-trigger .att-pill { transition: none; } }
 .att-badge { font: 700 10.5px var(--font-ui); text-transform: uppercase; letter-spacing: .05em; padding: 3px 10px; border-radius: 999px; border: 1px solid; }
 .att-badge.att-late   { background: var(--att-late-bg);   border-color: var(--late-border);   color: var(--att-late); }
 .att-badge.att-leave  { background: var(--att-leave-bg);  border-color: var(--leave-border);  color: var(--att-leave); }
@@ -1154,12 +1185,7 @@ button.roll-person:active { transform: scale(.98); }
 .sheet-who { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
 .sheet-who strong { font-weight: 600; overflow-wrap: anywhere; }
 .sheet-who > span { font-size: 12.5px; color: var(--muted); font-weight: 500; }
-.sheet-att { appearance: none; border: 0; background: transparent; padding: 0; font: 700 12.5px var(--font-ui); color: var(--present-ink); }
-button.sheet-att { cursor: pointer; text-decoration: underline dotted; text-underline-offset: 3px; }
-.sheet-att.att-late   { color: var(--att-late); }
-.sheet-att.att-leave  { color: var(--att-leave); }
-.sheet-att.att-sick   { color: var(--att-sick); }
-.sheet-att.att-noshow { color: var(--att-noshow); }
+.sheet-who > span .att-pick { vertical-align: middle; }
 .sheet-note { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); line-height: 1.45; }
 button.sheet-note { appearance: none; display: block; width: 100%; text-align: left; font: inherit; background: transparent; border: 1px solid transparent; border-radius: 8px; padding: 4px 6px; margin: -5px -7px; cursor: text; }
 button.sheet-note:hover { border-color: var(--line); background: var(--bg); }
@@ -1168,7 +1194,8 @@ button.sheet-note:hover { border-color: var(--line); background: var(--bg); }
 .sheet textarea { width: 100%; min-width: 160px; font: inherit; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); color: var(--ink); resize: vertical; margin-bottom: 6px; }
 .sheet-row.has-blocker > * { background: color-mix(in srgb, var(--err) 7%, transparent); }
 .sheet-row.has-blocker .sheet-blockers .sheet-note { color: var(--err); font-weight: 600; }
-.sheet-row.is-away > * { opacity: .6; }
+/* the member cell dims only name and avatar: opacity on the cell would fade the status menu too */
+.sheet-row.is-away > td, .sheet-row.is-away .avatar-roll, .sheet-row.is-away .sheet-who strong { opacity: .6; }
 .sheet-row.is-away .avatar-roll { filter: grayscale(.5); }
 .sheet .ticket-bar { display: flex; width: 100%; margin: 6px 0 6px; }
 .sheet-ticket-meta { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
