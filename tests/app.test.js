@@ -8,7 +8,7 @@ const vm = require('node:vm');
 
 // The UI scripts in index.html load order. Each runs as its own script in
 // one shared context, like the browser; init() is left out.
-const sources = ['theme.js', 'monthly-report.js', 'blockers.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-query.js', 'pi-report.js', 'pi-editor.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'full-backup.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
+const sources = ['theme.js', 'monthly-report.js', 'blockers.js', 'kpi-report.js', 'pi-periods.js', 'password-policy.js', 'pi-query.js', 'pi-report.js', 'pi-editor.js', 'status-colors.js', 'live-sync.js', 'own-key.js', 'idle-timeout.js', 'dialogs.js', 'tooltips.js', 'setup-checklist.js', 'full-backup.js', 'app-core.js', 'app-auth.js', 'app-views.js', 'app.js'].map((name) =>
   fs.readFileSync(path.join(__dirname, '..', 'public', name), 'utf8').replace(/\ninit\(\);\s*$/, '\n'));
 
 function appContext(fetchImpl = async () => { throw new Error('unexpected fetch'); }, initialStorage = {}) {
@@ -1715,4 +1715,112 @@ test('browser data saved under the old dailyscrum. keys moves to scrumdesk. keys
   assert.equal(storage.get('scrumdesk.theme.v1'), '"dark"');
   assert.equal(storage.get('scrumdesk.compact.v1'), 'false', 'a newer value is not overwritten');
   assert.deepEqual([...storage.keys()].filter((k) => k.startsWith('dailyscrum.')), []);
+});
+
+/* ---------------- idle sign-out ---------------- */
+
+/** A signed-in board with the idle popup in the DOM; fetch answers per URL. */
+function idleBoard(answers) {
+  const calls = [];
+  const delays = [];
+  const { context } = appContext(async (url) => {
+    calls.push(url);
+    const body = answers[url] || { ok: true };
+    return { ok: body.status ? body.status < 400 : true, status: body.status || 200, json: async () => body };
+  });
+  const overlay = { hidden: true, querySelector: () => null };
+  const countdown = { textContent: '' };
+  const query = context.document.querySelector;
+  context.document.querySelector = (sel) => sel === '#idleOverlay' ? overlay : sel === '#idleCountdown' ? countdown : query(sel);
+  Object.assign(context.document.body, { children: [], style: {} });
+  context.document.activeElement = null;
+  context.setTimeout = (fn, ms) => { delays.push(ms); return 1; };
+  context.setInterval = () => 2;
+  context.clearInterval = () => {};
+  vm.runInContext("storageMode = 'server'; auth = { name: 'x', role: 'admin' }; setIdleMinutes(5); startIdleWatch()", context);
+  return { context, calls, delays, overlay, countdown };
+}
+
+test('the idle watch first checks a minute before the timeout', () => {
+  const { delays } = idleBoard({});
+  assert.equal(delays[delays.length - 1], 4 * 60000);
+});
+
+test('after a reload the idle watch starts from the time the server says is left', () => {
+  const { context, delays } = idleBoard({});
+  vm.runInContext('setIdleMinutes(5, 90000)', context);
+  assert.equal(delays[delays.length - 1], 30000, 'checks a minute before the session really ends');
+  vm.runInContext('startIdleWatch()', context);
+  assert.equal(delays[delays.length - 1], 4 * 60000, 'the server time is used once only');
+});
+
+test('the idle warning shows with a countdown when under a minute is left', async () => {
+  const { context, overlay, countdown } = idleBoard({ '/api/auth/status': { authenticated: true, idleMinutes: 5, idleRemainingMs: 30000 } });
+  await vm.runInContext('checkIdle()', context);
+  assert.equal(overlay.hidden, false);
+  assert.equal(countdown.textContent, '30 seconds');
+});
+
+test('activity in another tab postpones the idle warning', async () => {
+  const { context, overlay, delays } = idleBoard({ '/api/auth/status': { authenticated: true, idleMinutes: 5, idleRemainingMs: 4 * 60000 } });
+  await vm.runInContext('checkIdle()', context);
+  assert.equal(overlay.hidden, true);
+  assert.equal(delays[delays.length - 1], 3 * 60000);
+});
+
+test('an idle session the server ended signs the user out', async () => {
+  const { context, calls } = idleBoard({ '/api/auth/status': { authenticated: false, idleMinutes: 5 } });
+  await vm.runInContext('checkIdle()', context);
+  assert.ok(calls.includes('/api/auth/logout'));
+  assert.match(vm.runInContext("document.querySelector('#app').innerHTML", context), /authForm/);
+  assert.equal(vm.runInContext('idleWatching', context), false);
+});
+
+test('activity is reported to the server at most every 30 seconds', () => {
+  const { context, calls } = idleBoard({ '/api/auth/activity': { ok: true, idleRemainingMs: 300000 } });
+  vm.runInContext('idlePingAt = 0; onIdleActivity(); onIdleActivity(); onIdleActivity()', context);
+  assert.equal(calls.filter((u) => u === '/api/auth/activity').length, 1);
+});
+
+test('"Stay signed in" closes the warning and reports activity', async () => {
+  const { context, calls, overlay } = idleBoard({ '/api/auth/status': { authenticated: true, idleMinutes: 5, idleRemainingMs: 20000 },
+    '/api/auth/activity': { ok: true, idleRemainingMs: 300000 } });
+  await vm.runInContext('checkIdle()', context);
+  await vm.runInContext('idleStay()', context);
+  assert.equal(overlay.hidden, true);
+  assert.ok(calls.includes('/api/auth/activity'));
+});
+
+test('no idle watch when the admin turned the timeout off', () => {
+  const { context } = idleBoard({});
+  vm.runInContext('setIdleMinutes(0)', context);
+  assert.equal(vm.runInContext('idleWatching', context), false);
+});
+
+test('Settings → Users lets an admin set the idle timeout', () => {
+  const context = teamBoard('admin');
+  vm.runInContext('setIdleMinutes(15)', context);
+  const html = vm.runInContext('usersPanel()', context);
+  assert.match(html, /id="idleForm"/);
+  assert.match(html, /name="minutes"[^>]*value="15"/);
+});
+
+test('an empty idle-minutes field is rejected instead of turning the timeout off', async () => {
+  const toasts = [];
+  const { context, calls } = idleBoard({});
+  context.markToast = (m) => toasts.push(m);
+  vm.runInContext("toast = (m) => markToast(m)", context);
+  await vm.runInContext("onIdleSettingSubmit({ minutes: { value: '  ' } })", context);
+  assert.ok(!calls.includes('/api/auth/idle-timeout'));
+  assert.deepEqual(toasts, ['Enter whole minutes from 0 to 480']);
+});
+
+test('saving the idle timeout after the session ended shows the login screen, not an admin error', async () => {
+  const toasts = [];
+  const { context } = idleBoard({ '/api/auth/idle-timeout': { status: 401, error: 'Not signed in.' } });
+  context.markToast = (m) => toasts.push(m);
+  vm.runInContext("toast = (m) => markToast(m)", context);
+  await vm.runInContext("onIdleSettingSubmit({ minutes: { value: '10' } })", context);
+  assert.match(vm.runInContext("document.querySelector('#app').innerHTML", context), /authForm/);
+  assert.deepEqual(toasts, ['Session expired — sign in again']);
 });

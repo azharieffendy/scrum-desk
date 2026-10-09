@@ -221,6 +221,10 @@ people who need to sign in:
 If you do use Technical Leads, create their accounts **before** adding members, so you can pick
 them as the lead.
 
+The same screen has **Idle sign-out**: everyone is signed out after 5 minutes without activity.
+Raise it if a board is left open on a shared screen during the standup, or set 0 to turn it off
+(see [Users & security](#users--security)).
+
 **2. Team members (Settings → Team members → Add member).** The repo comes with no members. Add
 your own people with:
 
@@ -542,13 +546,24 @@ person's search fails, the others still load and that person is marked with JIRA
 ## Users & security
 
 - Passwords are scrypt-hashed with per-user salts; sessions are HttpOnly cookies
-  stored in the database (30 days). The database keeps only a SHA-256 hash of each
-  session token, so a copied database file cannot be used to sign in.
+  stored in the database (30 days at most). The cookie is not saved to disk, so closing
+  the browser signs you out (unless the browser restores its previous session). The
+  database keeps only a SHA-256 hash of each session token, so a copied database file
+  cannot be used to sign in.
+- **Idle sign-out:** a session also ends after 5 minutes without mouse, keyboard or touch
+  activity, with a "Still there?" warning a minute before (half the timeout when it is
+  under 2 minutes). Background refreshes do not count as activity, and the server
+  enforces it too, so a closed tab cannot keep a session alive. Activity in one tab keeps
+  the user's other tabs signed in, and reloading the page does not reset the countdown.
+  Admins change the minutes (whole minutes, 0 = off, up to 480) in
+  **Settings → Users → Idle sign-out**; saving a new value restarts every signed-in
+  user's countdown, so turning it on does not sign everyone out at once.
 - New and reset passwords need at least 10 characters, with an uppercase letter, a
   lowercase letter, a number and a special character. Existing passwords can still
   sign in; change them in Account settings.
 - Failed logins are rate-limited per username **and** client IP (8 per 10 minutes), plus
   50 per client IP. Someone guessing from another address cannot lock you out.
+  Wrong current passwords when changing a password are limited the same way (8 per 10 minutes).
 - Team leads cannot claim other people's JIRA accounts or another member's email through
   the member list or account mapping.
 - First-run setup uses a random 128-bit code printed in the server log unless `SETUP_CODE` is set.
@@ -604,7 +619,8 @@ VPS instead.
 | Sync works but no tickets | No active sprint, or the sprint query excludes them — adjust it in Settings → JIRA connection. |
 | Tickets on the wrong person | Check the member's JIRA email, or map the user in the Sprint view. |
 | JIRA not auto-refreshing | It refreshes on sign-in when credentials exist; check Settings → JIRA connection → Test connection. |
-| Too many attempts | Wait 10 minutes after 8 failed logins from the same address. |
+| Too many attempts | Wait 10 minutes after 8 failed logins from the same address, or 8 wrong current passwords when changing your password. |
+| Signed out unexpectedly ("Session expired") | Idle sign-out ended the session, or the browser was closed. An admin can raise the minutes (or set 0) in Settings → Users → Idle sign-out. |
 | `SQLITE_CANTOPEN` / permission denied on start | `data` is root-owned from an older install: `sudo chown -R 1000:1000 ./data`. |
 | Lost the setup code | `docker compose logs scrum-desk`, or restart with `SETUP_CODE` set. |
 | KPI: "Could not detect the JIRA board" | No open sprint matched the sprint query — set the board ID in Settings → KPI rules (it's in the board URL: `…/boards/42`). |
@@ -626,12 +642,13 @@ public/          static UI (index.html, app-core/app-auth/app-views/app.js, styl
   pi-periods.js    Performance report periods (1–12 months), shared with the server
   pi-report.js     Reports → Performance: JIRA report per period + Excel export, Settings → Performance report
   own-key.js       an admin's/lead's own JIRA API key: Account panel + "set your key" popup
+  idle-timeout.js  idle sign-out: activity tracking, "Still there?" warning, Settings → Users → Idle sign-out
   dialogs.js       in-app confirm dialog, Undo toast, unsaved-work guard (close-tab warning, save banner)
   tooltips.js      info marks ("i") with a floating explanation bubble, used by the KPI and Performance reports
   setup-checklist.js first-run setup checklist on the Today board + Performance report default-query warning
   xlsx.js          tiny dependency-free .xlsx writer
 server.js        the whole local server: static + auth + state API + JIRA proxy
-lib/db.js        SQLite persistence (state, users, sessions, KPI cache)
+lib/db.js        SQLite persistence (state, users, sessions + idle timeout, KPI cache)
 lib/jira-core.js JIRA Cloud helpers (search, auth, pagination)
 lib/jira-handler.js shared proxy logic (creds: env > request > database)
 lib/kpi-core.js  KPI counting rules (pure)

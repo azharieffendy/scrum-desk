@@ -437,6 +437,8 @@ const clickActions = {
   'import-btn': () => { const f = $('#importFile'); if (f) f.click(); },
   'erase': () => eraseAll(),
   'logout': () => logout(),
+  'idle-stay': () => idleStay(),
+  'idle-signout': () => { stopIdleWatch(); logout(); },
   'delete-user': async (el) => {
     const u = usersList.find((x) => String(x.id) === String(el.dataset.id));
     if (!u) return;
@@ -449,6 +451,7 @@ const clickActions = {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: u.id }),
     });
+    if (sessionLost(r)) return;
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return toast(d.error || 'Failed to delete user', 'error');
     toast('User deleted', 'success');
@@ -469,6 +472,7 @@ const clickActions = {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: u.id, newPassword: np }),
     });
+    if (sessionLost(r)) return;
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return toast(d.error || 'Failed to reset password', 'error');
     toast('Password updated', 'success');
@@ -666,6 +670,7 @@ async function onDocSubmit(e) {
   if (f.id === 'pwForm') { e.preventDefault(); await onPasswordSubmit(f); return; }
   if (f.id === 'ownKeyForm' || f.id === 'ownKeyModalForm') { e.preventDefault(); await onOwnKeySubmit(f); return; }
   if (f.id === 'userForm') { e.preventDefault(); await onUserCreateSubmit(f); return; }
+  if (f.id === 'idleForm') { e.preventDefault(); await onIdleSettingSubmit(f); return; }
   if (f.id === 'fullBackupForm' || f.id === 'restoreCheckForm') {
     e.preventDefault();
     // forms are admin-only like the backup buttons (the server checks too)
@@ -713,6 +718,7 @@ function init() {
   }, true);
   initSaveGuard();
   initTips();
+  initIdleWatch();
   document.addEventListener('keydown', (e) => {
     if (handleDialogKey(e)) return;
     if (handleAttMenuKey(e)) return;

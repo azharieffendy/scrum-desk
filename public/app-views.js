@@ -1012,6 +1012,7 @@ function usersPanel() {
         </select></label>
       <button type="submit" class="btn btn-ghost">+ Create user</button>
     </form>
+    ${storageMode === 'server' ? idleSettingHtml() : ''}
   </section>`;
 }
 
