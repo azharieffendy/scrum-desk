@@ -75,9 +75,12 @@ function isHttps(req) {
   return TRUST_PROXY && String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() === 'https';
 }
 
+/* Without maxAge it is a browser-session cookie: closing the browser drops it,
+ * so the next visit asks for a login (the server still caps it at 30 days). */
 function setCookie(req, res, name, value, maxAge) {
   const secure = process.env.COOKIE_SECURE === 'true' || isHttps(req) ? '; Secure' : '';
-  res.setHeader('Set-Cookie', name + '=' + value + '; Path=/; HttpOnly; SameSite=Lax; Max-Age=' + maxAge + secure);
+  const age = maxAge === undefined ? '' : '; Max-Age=' + maxAge;
+  res.setHeader('Set-Cookie', name + '=' + value + '; Path=/; HttpOnly; SameSite=Lax' + age + secure);
 }
 
 /* Behind a trusted proxy, the last X-Forwarded-For entry is the address the
@@ -182,6 +185,14 @@ function backgroundJiraRefresh(user) {
 
 function isAdmin(user) { return (user.role || 'admin') === 'admin'; }
 
+/* Answers non-admins; a signed-out user gets 401 so the app shows the login screen. */
+function denyNonAdmin(res, user) {
+  if (user && isAdmin(user)) return false;
+  if (user) sendJson(res, 403, { error: 'Admin access required.' });
+  else sendJson(res, 401, { error: 'Not signed in.' });
+  return true;
+}
+
 const envJira = () => Boolean(process.env.JIRA_SITE && process.env.JIRA_EMAIL && process.env.JIRA_API_TOKEN);
 
 /** The user's own JIRA key status for the browser (never the token); null for viewers. */
@@ -199,13 +210,15 @@ async function handleAuth(req, res, url) {
       authenticated: !!user,
       needsSetup: db.countUsers() === 0,
       user: user ? { name: user.username, role: user.role || 'admin', memberId: user.memberId || '' } : null,
+      idleMinutes: db.getIdleMinutes(),
+      idleRemainingMs: user ? db.idleRemainingMs(token) : null,
     });
   }
 
   if (url.pathname === '/api/auth/jira') return handleOwnJira(req, res, user);
 
   if (url.pathname === '/api/auth/users' && req.method === 'GET') {
-    if (!user || !isAdmin(user)) return sendJson(res, 403, { error: 'Admin access required.' });
+    if (denyNonAdmin(res, user)) return;
     return sendJson(res, 200, { users: db.listUsers() });
   }
 
@@ -226,9 +239,10 @@ async function handleAuth(req, res, url) {
     const id = db.createUser(String(body.username).trim(), body.password, 'admin');
     setupCode = null;
     const s = db.createSession(id);
-    setCookie(req, res, SESSION_COOKIE, s.token, s.maxAge);
+    setCookie(req, res, SESSION_COOKIE, s.token);
     backgroundJiraRefresh({ id, role: 'admin' });
-    return sendJson(res, 200, { ok: true, user: { name: String(body.username).trim().toLowerCase(), role: 'admin' } });
+    return sendJson(res, 200, { ok: true, user: { name: String(body.username).trim().toLowerCase(), role: 'admin' },
+      idleMinutes: db.getIdleMinutes() });
   }
 
   if (url.pathname === '/api/auth/login') {
@@ -243,9 +257,23 @@ async function handleAuth(req, res, url) {
     }
     loginFailures.delete(userKey(username, ip));
     const s = db.createSession(u.id);
-    setCookie(req, res, SESSION_COOKIE, s.token, s.maxAge);
+    setCookie(req, res, SESSION_COOKIE, s.token);
     backgroundJiraRefresh(u);
-    return sendJson(res, 200, { ok: true, user: { name: u.username, role: u.role || 'admin', memberId: u.memberId || '' } });
+    return sendJson(res, 200, { ok: true, user: { name: u.username, role: u.role || 'admin', memberId: u.memberId || '' },
+      idleMinutes: db.getIdleMinutes() });
+  }
+
+  /* the browser reports real user activity (not background refreshes) here */
+  if (url.pathname === '/api/auth/activity') {
+    if (!user) return sendJson(res, 401, { error: 'Not signed in.' });
+    db.touchSession(token);
+    return sendJson(res, 200, { ok: true, idleRemainingMs: db.idleRemainingMs(token) });
+  }
+
+  if (url.pathname === '/api/auth/idle-timeout') {
+    if (denyNonAdmin(res, user)) return;
+    db.setIdleMinutes(body.minutes);
+    return sendJson(res, 200, { ok: true, minutes: db.getIdleMinutes() });
   }
 
   if (url.pathname === '/api/auth/logout') {
@@ -259,9 +287,13 @@ async function handleAuth(req, res, url) {
     const next = String(body.next || '');
     const weak = passwordPolicy.problem(next);
     if (weak) return sendJson(res, 400, { error: weak });
+    const pwKey = 'pw:' + user.id;
+    if (failCount(pwKey) >= MAX_FAILS_PER_USER) return sendJson(res, 429, { error: 'Too many attempts — wait 10 minutes.' });
     if (!db.changePassword(user.id, body.current || '', next, token)) {
+      recordFailure(pwKey);
       return sendJson(res, 400, { error: 'Current password is wrong.' });
     }
+    loginFailures.delete(pwKey);
     return sendJson(res, 200, { ok: true });
   }
 
@@ -281,7 +313,7 @@ async function handleAuth(req, res, url) {
   }
 
   if (url.pathname.startsWith('/api/auth/users')) {
-    if (!user || !isAdmin(user)) return sendJson(res, 403, { error: 'Admin access required.' });
+    if (denyNonAdmin(res, user)) return;
     return handleUserAdmin(res, url, body, user);
   }
 
@@ -610,7 +642,7 @@ const server = http.createServer(async (req, res) => {
 
 db.purgeExpiredSessions();
 kpiService.recomputeStale();
-setInterval(db.purgeExpiredSessions, 60 * 60000).unref();
+setInterval(db.purgeExpiredSessions, 10 * 60000).unref();
 
 server.listen(PORT, () => {
   console.log('');

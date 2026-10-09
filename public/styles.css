@@ -791,6 +791,9 @@ summary.sprint-member-head::before { content: "▸"; color: var(--muted); }
 .pi-default-warn .linklike { color: inherit; text-decoration: underline; font-weight: 600; }
 
 .own-key { margin: 4px 0 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.idle-form { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.idle-form h4 { margin: 0 0 6px; font-size: 14px; }
+#idleCountdown { font-variant-numeric: tabular-nums; }
 .own-key h4 { margin: 0 0 6px; font-size: 14px; }
 
 /* ---------------- auth screens ---------------- */

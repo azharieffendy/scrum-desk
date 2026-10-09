@@ -72,6 +72,18 @@ test('setup requires the setup code', async () => {
   assert.equal(again.status, 403);
 });
 
+test('the login cookie ends with the browser; logout expires it', async () => {
+  const login = await fetch(BASE + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'lead', password: 'Test-password-1' }) });
+  assert.equal(login.status, 200);
+  const set = login.headers.get('set-cookie');
+  assert.match(set, /HttpOnly/);
+  assert.doesNotMatch(set, /Max-Age|Expires/i);
+
+  const out = await fetch(BASE + '/api/auth/logout', { method: 'POST', headers: { Cookie: set.split(';')[0] } });
+  assert.match(out.headers.get('set-cookie'), /Max-Age=0/);
+});
+
 test('browser writes from another origin are refused while same-origin writes work', async () => {
   const bad = await api('POST', '/api/auth/logout', { cookie: adminCookie,
     headers: { Origin: 'https://other.example', 'Sec-Fetch-Site': 'cross-site' } });
@@ -279,4 +291,49 @@ test("someone else's failed sign-ins do not lock a user out", async () => {
   assert.equal(last.status, 429, 'the guessing address is slowed down');
   assert.equal((await from('10.0.0.66', 'Test-password-9')).status, 429);
   assert.equal((await from('10.0.0.7', 'Test-password-9')).status, 200, 'the real user can still sign in from elsewhere');
+});
+
+test('sign-in status tells the browser the idle timeout', async () => {
+  const res = await api('GET', '/api/auth/status', { cookie: adminCookie });
+  assert.equal(res.data.idleMinutes, 5);
+  assert.ok(res.data.idleRemainingMs > 4 * 60000 && res.data.idleRemainingMs <= 5 * 60000);
+  assert.equal((await api('GET', '/api/auth/status')).data.idleMinutes, 5, 'known before sign-in too');
+});
+
+test('activity pings need a session and report the time left', async () => {
+  assert.equal((await api('POST', '/api/auth/activity', { body: {} })).status, 401);
+  const res = await api('POST', '/api/auth/activity', { cookie: adminCookie, body: {} });
+  assert.equal(res.status, 200);
+  assert.ok(res.data.idleRemainingMs > 4 * 60000);
+});
+
+test('only an admin changes the idle timeout, within 0-480 minutes', async () => {
+  const set = (cookie, minutes) => api('POST', '/api/auth/idle-timeout', { cookie, body: { minutes } });
+  const viewer = await api('POST', '/api/auth/login', { body: { username: 'viewer', password: 'Test-password-3' } });
+  assert.equal((await set(viewer.cookie, 30)).status, 403);
+  assert.equal((await set(adminCookie, 481)).status, 400);
+  const ok = await set(adminCookie, 30);
+  assert.equal(ok.status, 200);
+  assert.equal(ok.data.minutes, 30);
+  assert.equal((await api('GET', '/api/auth/status')).data.idleMinutes, 30);
+  assert.equal((await set(adminCookie, 5)).status, 200);
+});
+
+test('admin routes answer 401 (sign in again), not 403, once the session is gone', async () => {
+  const gone = 'ds_session=expired-or-unknown';
+  assert.equal((await api('GET', '/api/auth/users', { cookie: gone })).status, 401);
+  assert.equal((await api('POST', '/api/auth/users/delete', { cookie: gone, body: { id: 999 } })).status, 401);
+  assert.equal((await api('POST', '/api/auth/idle-timeout', { cookie: gone, body: { minutes: 5 } })).status, 401);
+  const viewer = await api('POST', '/api/auth/login', { body: { username: 'viewer', password: 'Test-password-3' } });
+  assert.equal((await api('GET', '/api/auth/users', { cookie: viewer.cookie })).status, 403, 'a signed-in viewer is still refused');
+});
+
+test('wrong current passwords are rate limited', async () => {
+  await api('POST', '/api/auth/users', { cookie: adminCookie, body: { username: 'pwguess', password: 'Test-password-1', role: 'viewer' } });
+  const login = await api('POST', '/api/auth/login', { body: { username: 'pwguess', password: 'Test-password-1' } });
+  const change = (current) => api('POST', '/api/auth/password', { cookie: login.cookie, body: { current, next: 'Test-password-7' } });
+  let last;
+  for (let i = 0; i < 9; i++) last = await change('wrong-guess');
+  assert.equal(last.status, 429);
+  assert.equal((await change('Test-password-1')).status, 429, 'even the right password waits');
 });

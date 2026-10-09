@@ -296,3 +296,50 @@ test('the browser check (kpiRoleRulesError) accepts and refuses exactly what the
   }
   saveRules({ kpiRoleRules: [] });
 });
+
+test('a session idle longer than the timeout is rejected; activity keeps it alive', () => {
+  const id = db.createUser('idle-user', 'Test-password-1', 'viewer');
+  const { token } = db.createSession(id);
+  const now = Date.now();
+  assert.equal(db.getIdleMinutes(), 5, 'defaults to 5 minutes');
+  assert.ok(db.getSessionUser(token, now + 4 * 60000), 'still valid after 4 idle minutes');
+  assert.equal(db.getSessionUser(token, now + 6 * 60000), null, 'expired after 6 idle minutes');
+
+  db.touchSession(token, now + 4 * 60000);
+  assert.ok(db.getSessionUser(token, now + 8 * 60000), 'activity at minute 4 keeps it alive at minute 8');
+  assert.equal(db.idleRemainingMs(token, now + 8 * 60000), 60000);
+
+  db.setIdleMinutes(0);
+  assert.ok(db.getSessionUser(token, now + 60 * 60000), '0 turns the idle timeout off');
+  assert.equal(db.idleRemainingMs(token, now), null);
+  db.setIdleMinutes(5);
+});
+
+test('turning the idle timeout on restarts live sessions instead of ending them', () => {
+  const id = db.createUser('idle-toggle', 'Test-password-1', 'viewer');
+  const { token } = db.createSession(id);
+  const now = Date.now();
+  db.setIdleMinutes(0, now);
+  // an hour passes with the timeout off: nothing records activity meanwhile
+  db.setIdleMinutes(5, now + 60 * 60000);
+  assert.ok(db.getSessionUser(token, now + 61 * 60000), 'still signed in right after the timeout is turned on');
+  assert.equal(db.idleRemainingMs(token, now + 61 * 60000), 4 * 60000);
+  assert.equal(db.getSessionUser(token, now + 66 * 60000), null, 'the new countdown still ends it');
+  db.setIdleMinutes(5);
+});
+
+test('changing the idle timeout does not revive a session that already timed out', () => {
+  const id = db.createUser('idle-dead', 'Test-password-1', 'viewer');
+  const { token } = db.createSession(id);
+  const now = Date.now();
+  db.setIdleMinutes(10, now + 20 * 60000);
+  assert.equal(db.getSessionUser(token, now + 21 * 60000), null);
+  db.setIdleMinutes(5);
+});
+
+test('the idle timeout accepts whole minutes from 0 to 480 only', () => {
+  for (const bad of [-1, 481, 2.5, 'abc', null]) assert.throws(() => db.setIdleMinutes(bad), /minutes/, String(bad));
+  db.setIdleMinutes('15');
+  assert.equal(db.getIdleMinutes(), 15);
+  db.setIdleMinutes(5);
+});

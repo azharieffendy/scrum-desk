@@ -106,6 +106,18 @@
   </div>
 </div>
 
+<div class="overlay" id="idleOverlay" hidden>
+  <div class="modal modal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="idleTitle" aria-describedby="idleMessage">
+    <h3 id="idleTitle">Still there?</h3>
+    <p class="confirm-message" id="idleMessage">You have been inactive for a while. You will be signed out in
+      <b id="idleCountdown" aria-live="off">60 seconds</b> unless you choose to stay.</p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost" data-action="idle-signout">Sign out now</button>
+      <button type="button" class="btn btn-primary" data-action="idle-stay">Stay signed in</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="confirmOverlay" hidden>
   <div class="modal modal-confirm" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmMessage">
     <h3 id="confirmTitle"></h3>
@@ -133,6 +145,7 @@
 <script src="status-colors.js"></script>
 <script src="live-sync.js"></script>
 <script src="own-key.js"></script>
+<script src="idle-timeout.js"></script>
 <script src="dialogs.js"></script>
 <script src="tooltips.js"></script>
 <script src="setup-checklist.js"></script>

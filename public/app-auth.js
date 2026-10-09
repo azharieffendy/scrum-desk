@@ -11,6 +11,7 @@ function showAuthScreen(mode) {
   closeOwnKeyModal();
   closeModal();
   stopLiveUpdates();
+  stopIdleWatch();
   document.body.classList.add('auth-mode');
   const app = $('#app');
   app.innerHTML = authScreenHtml(mode);
@@ -72,6 +73,7 @@ async function onAuthSubmit(f) {
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     auth = { name: (data.user && data.user.name) || username.toLowerCase(), role: (data.user && data.user.role) || 'admin',
       memberId: (data.user && data.user.memberId) || '' };
+    setIdleMinutes(data.idleMinutes);
     toast(mode === 'setup' ? 'Account created — welcome!' : 'Signed in — good morning!', 'success');
     await enterBoard();
   } catch (e) {
@@ -111,6 +113,7 @@ async function onUserCreateSubmit(f) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password, role }),
     });
+    if (sessionLost(res)) return;
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ('HTTP ' + res.status));
     f.username.value = ''; f.password.value = ''; f.role.value = 'viewer';
@@ -122,11 +125,19 @@ async function onUserCreateSubmit(f) {
   }
 }
 
+/** A 401 means the session ended (idle timeout, signed out elsewhere): show the login screen. */
+function sessionLost(res) {
+  if (res.status !== 401 || storageMode !== 'server') return false;
+  showAuthScreen('login');
+  toast('Session expired — sign in again', 'error');
+  return true;
+}
+
 async function refreshUsers() {
   if (!canAdmin() || storageMode === 'local') { usersList = []; return; }
   try {
     const r = await fetch('/api/auth/users');
-    if (!r.ok) return;
+    if (sessionLost(r) || !r.ok) return;
     const d = await r.json();
     usersList = d.users || [];
   } catch (_) { /* ignore */ }
@@ -162,6 +173,7 @@ async function enterBoard() {
   if (ui.view === 'settings' && canAdmin()) await refreshUsers();
   render();
   startLiveUpdates();
+  startIdleWatch();
   // an admin/lead without their own JIRA key is asked for one; the sync runs once it is saved
   if (needsOwnKey()) openOwnKeyModal(autoSyncJira);
   else autoSyncJira();
@@ -193,6 +205,7 @@ async function boot() {
       throw new Error('The server returned an invalid login status.');
     }
     storageMode = 'server';
+    setIdleMinutes(data.idleMinutes, data.idleRemainingMs);
     if (data.needsSetup) return showAuthScreen('setup');
     if (!data.authenticated) return showAuthScreen('login');
     auth = {

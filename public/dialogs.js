@@ -55,6 +55,7 @@ function handleDialogKey(e) {
     e.preventDefault();
     if (top.overlay.id === 'confirmOverlay') closeConfirm(false);
     else if (top.overlay.id === 'keyOverlay') closeOwnKeyModal();
+    else if (top.overlay.id === 'idleOverlay') idleStay();
     else closeModal();
     return true;
   }
