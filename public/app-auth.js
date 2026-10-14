@@ -6,6 +6,7 @@
 /* ---------------- auth ---------------- */
 
 function showAuthScreen(mode) {
+  if (navigationReady) resetMonths(); // leaving the board (sign-out, idle, expiry), not a first page load
   navigationReady = false;
   closeConfirm(false);
   closeOwnKeyModal();

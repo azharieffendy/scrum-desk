@@ -26,7 +26,7 @@ SEED = r"""() => {
   const month = shiftMonth(today.slice(0, 7), -1);
   window.demoMonth = month;
   ui.date = today;
-  ui.month = month;
+  ui.monthByView = { report: month, kpi: month, blockers: month };
   ui.histMonth = month;
   ui.histSel = month + '-23';
   ui.boardView = 'cards';

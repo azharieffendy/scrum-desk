@@ -71,7 +71,11 @@ const ui = {
   compact: loadJSON('scrumdesk.compact.v1', true) !== false,
   boardView: loadJSON('scrumdesk.boardview.v1', 'cards') === 'sheet' ? 'sheet' : 'cards',
   memberSearch: '', editingNote: null, ticketExpansion: new Map(), ticketFilters: new Map(), sprintCollapsed: new Set(),
-  view: 'today', date: todayISO(), month: todayISO().slice(0, 7),
+  view: 'today', date: todayISO(),
+  // Attendance, Sprint delivery and Blockers each keep their own month; one never moved shows the running month
+  monthByView: {},
+  get month() { return this.monthByView[this.view] || todayISO().slice(0, 7); },
+  set month(value) { this.monthByView[this.view] = value; },
   statusPick: '', todayFilter: '', attMenu: null, settingsTab: '', team: '',
   sprintMode: loadJSON('scrumdesk.sprintMode.v1', 'board') === 'list' ? 'list' : 'board',
   sprintDoneOpen: new Set(), sprintMapOpen: false, histMonth: '', histSel: '', jiraDraft: null,
@@ -176,6 +180,16 @@ function syncNavigationUrl() {
     window.history[replaceNavigationUrl ? 'replaceState' : 'pushState'](null, '', url.href);
   }
   replaceNavigationUrl = false;
+}
+
+/** Picked months last one sign-in: forget them and drop the month from the address. */
+function resetMonths() {
+  ui.monthByView = {};
+  if (!window.location || !window.history) return;
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('month')) return;
+  url.searchParams.delete('month');
+  window.history.replaceState(null, '', url.href);
 }
 
 async function onNavigationPop() {
