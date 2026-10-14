@@ -312,7 +312,7 @@ async function kpiBoard(role, fetchImpl) {
     auth = { name: 'x', role: '${role}' };
     state.members = [{ id: 'm1', name: 'Member One', color: '#3D51E0' }, { id: 'm2', name: 'Member Two', color: '#0F8A5F' }];
     creds.site = 'team.atlassian.net';
-    ui.month = '2026-09';
+    ui.monthByView.kpi = '2026-09';
     clickActions.view({ dataset: { view: 'kpi' } });
   `, context);
   await new Promise((r) => setImmediate(r));
@@ -1562,6 +1562,33 @@ test('navigation canonicalizes on boot and Back without growing history on ordin
   assert.equal(vm.runInContext('ui.view', context), 'report');
   assert.equal(vm.runInContext('ui.month', context), '2026-08');
   assert.deepEqual(calls, ['replaceState', 'pushState']);
+});
+
+test('each report page keeps its own month and starts on the running month', () => {
+  const { context } = appContext();
+  const now = vm.runInContext('todayISO().slice(0, 7)', context);
+  const monthOn = (view) => vm.runInContext(`ui.view = '${view}'; ui.month`, context);
+  vm.runInContext("ui.view = 'report'; ui.month = '2025-09'", context);
+  assert.equal(monthOn('kpi'), now);
+  assert.equal(monthOn('blockers'), now);
+  vm.runInContext("ui.view = 'kpi'; ui.month = '2025-07'", context);
+  assert.equal(monthOn('report'), '2025-09');
+  assert.equal(monthOn('kpi'), '2025-07');
+  assert.equal(monthOn('blockers'), now);
+});
+
+test('signing out returns every report page to the running month', () => {
+  const { context } = appContext();
+  const now = vm.runInContext('todayISO().slice(0, 7)', context);
+  Object.assign(context, { clearInterval, clearTimeout }); // the sign-in screen stops the idle watch
+  context.window.location = { href: 'http://scrum.test/?view=report&month=2025-09' };
+  context.window.history = { replaceState: (_s, _t, url) => { context.window.location.href = url; }, pushState: (_s, _t, url) => { context.window.location.href = url; } };
+  vm.runInContext("restoreNavigationUrl(); render(); ui.view = 'kpi'; ui.month = '2025-07'; ui.view = 'report'; render()", context);
+  assert.match(context.window.location.href, /month=2025-09/);
+  vm.runInContext("showAuthScreen('login')", context);
+  assert.doesNotMatch(context.window.location.href, /month=/);
+  assert.equal(vm.runInContext("ui.view = 'report'; ui.month", context), now);
+  assert.equal(vm.runInContext("ui.view = 'kpi'; ui.month", context), now);
 });
 
 test('Performance draft test ignores a response for a draft edited while JIRA was running', async () => {

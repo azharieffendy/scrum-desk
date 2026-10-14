@@ -3,6 +3,8 @@
 Scrum Desk — a self-hosted morning board for your daily opening / standup, with login accounts,
 a SQLite database, and JIRA Cloud integration — all in one Docker container.
 
+What changed and when: see the [Changelog](CHANGELOG.md).
+
 - **Login & users** — first run creates the admin account. Admins can create more users:
   - **Admin** — edit everything, sync JIRA, manage users
   - **Viewer** — view-only: see the board and download reports, cannot change data
@@ -668,6 +670,7 @@ scripts/restore-backup.js offline inspect / extract / restore-db for .dsbackup f
 api/jira.js      serverless wrapper for static hosting
 tests/           node:test suites (npm test)
 scripts/capture-ui-pages.py  offline demo-data screenshot generator
+CHANGELOG.md     what was added, changed or fixed, newest first
 docs/screenshots/ generated page captures embedded above
 Dockerfile / docker-compose.yml
 ```
