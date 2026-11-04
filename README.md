@@ -262,6 +262,11 @@ press **Save changes** to keep it.
 team). Story points field and board are detected automatically. If points show as 0, press
 **Detect story points field** or enter the field ID (e.g. `customfield_10016`). The KPI
 counts a task as *delivered* when it reaches a *Done*-category status.
+Closed sprints are frozen: once a sprint has been computed after it closed, its JIRA data
+(story points, status history, assignee) is kept as it was and is not refetched, not even by
+**Refresh from JIRA**. Such sprints show an **SP locked** badge with the date they were
+frozen, so story points edited in JIRA afterwards will not change past months. Changing
+the counting rules still recomputes them, from that saved data.
 Change this under **Counting rules**: list your own "handed to QA" statuses (comma-separated,
 case doesn't matter, up to 10), and untick *Also count JIRA's Done category* if Done alone shouldn't
 count. At least one of the two must count something.

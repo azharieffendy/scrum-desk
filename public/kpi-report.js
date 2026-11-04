@@ -139,7 +139,9 @@ const KPI_TIPS = {
   get deliveredAt() {
     return 'The day the task first reached ' + kpiDoneWords() + ', in the team timezone. Empty when it has not yet.';
   },
-  points: 'Story points from JIRA’s story points field (Settings → Sprint delivery (KPI)). Unestimated tasks count as 0.',
+  points: 'Story points from JIRA’s story points field (Settings → Sprint delivery (KPI)). Unestimated tasks count as 0.\n' +
+    'A closed sprint keeps the points it had when it was first computed after closing (see “SP locked”). ' +
+    'Later JIRA edits to its tasks are not picked up, even by Refresh from JIRA.',
   sprint: 'The sprint this row is about. A task that slipped from one sprint to the next has one row per sprint.',
   dates: 'Sprint start → end date. A sprint belongs to the month it started, even when it ends in the next month.',
 };
@@ -282,6 +284,7 @@ function kpiMemberReport(view, key) {
     for (const t of own) kpiAdd(c, t);
     sprints.push(Object.assign({
       id: s.id, name: s.name, state: s.state, start: s.start, end: s.end, status: s.status, error: s.error,
+      lockedAt: s.lockedAt || null,
     }, c, { completion: kpiCompletion(c) }));
   }
   return { row, tasks, sprints };
@@ -936,6 +939,11 @@ function kpiMembersPanel(v) {
 function kpiSprintBadge(s) {
   if (s.status === 'error') return `<span class="rbadge kpi-stale" title="${esc(s.error || '')}">stale — last refresh failed</span>`;
   if (s.status === 'pending') return '<span class="rbadge kpi-stale">not computed yet</span>';
+  if (s.lockedAt) {
+    const tip = 'JIRA data frozen when this closed sprint was computed on ' + kpiStamp(s.lockedAt) +
+      '. Later JIRA edits (story points, status) are not picked up, even by Refresh from JIRA.';
+    return `<span class="rbadge kpi-locked" title="${esc(tip)}">SP locked ${esc(kpiDate(s.lockedAt))}</span>`;
+  }
   return '';
 }
 
@@ -952,7 +960,7 @@ function kpiSprintsPanel(v) {
     <article class="panel ks-card">
       ${warn || s.error ? `<div class="ks-warn">${esc(warn)}${s.error ? ' <span>' + esc(s.error) + '</span>' : ''}</div>` : ''}
       <div class="ks-top">
-        <div><div class="ks-title"><strong>${esc(s.name)}</strong><span class="chip">${esc(s.state || 'unknown')}</span></div>
+        <div><div class="ks-title"><strong>${esc(s.name)}</strong><span class="chip">${esc(s.state || 'unknown')}</span>${s.lockedAt ? kpiSprintBadge(s) : ''}</div>
           <span class="muted">${esc(kpiDate(s.start))} &rarr; ${esc(kpiDate(s.end))}</span></div>
         <b class="ks-big${kpiTone(rate)}">${kpiPct(rate)}</b>
       </div>
@@ -1137,5 +1145,5 @@ function downloadKpiXlsx() {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { buildKpiView, filterKpiTasks, kpiIssueUrl, kpiSheets, kpiMemberReport, taskFindMatch, kpiTrendView, KPI_OUTCOMES,
     KPI_TIPS, kpiRules, kpiRulesError, kpiDoneWords, kpiDoneShort, kpiRulesNote,
-    kpiRoleRules, kpiRoleRulesError, kpiRoleNote };
+    kpiRoleRules, kpiRoleRulesError, kpiRoleNote, kpiSprintBadge };
 }

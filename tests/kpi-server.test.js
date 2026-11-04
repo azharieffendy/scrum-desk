@@ -220,6 +220,23 @@ test('a sprint cached while active is refetched once after it closes', async () 
   assert.equal(searches(/sprint = 10[12] /), 0, 'both closed and computed closed');
 });
 
+test('a sprint computed after it closed reports lockedAt; an active one does not', async () => {
+  const svc = service();
+  const res = await refresh(svc, '2026-09');
+  const closed = res.payload.sprints.find((s) => s.id === 101);
+  const active = res.payload.sprints.find((s) => s.id === 102);
+  assert.equal(closed.lockedAt, closed.computedAt, 'closed + computed closed → story points are frozen');
+  assert.ok(closed.lockedAt);
+  assert.equal(active.lockedAt, null, 'active sprints are refetched, so not locked');
+});
+
+test('a sprint whose last refresh failed is not reported as locked', async () => {
+  const svc = service();
+  failSprint(101, () => json({ errorMessages: ['boom'] }, 500));
+  const res = await refresh(svc, '2026-09');
+  assert.equal(res.payload.sprints.find((s) => s.id === 101).lockedAt, null);
+});
+
 test('one failing sprint keeps the others and reports its error', async () => {
   const svc = service();
   failSprint(101, () => json({ errorMessages: ['boom'] }, 500));

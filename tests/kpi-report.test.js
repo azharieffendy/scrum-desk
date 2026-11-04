@@ -2,7 +2,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { buildKpiView, filterKpiTasks, kpiIssueUrl, kpiSheets, kpiMemberReport, taskFindMatch } = require('../public/kpi-report.js');
+const { buildKpiView, filterKpiTasks, kpiIssueUrl, kpiSheets, kpiMemberReport, taskFindMatch, kpiSprintBadge, KPI_TIPS } = require('../public/kpi-report.js');
 const XlsxLite = require('../public/xlsx.js');
 
 const members = [
@@ -191,6 +191,33 @@ test('kpiMemberReport: one member’s totals, per-sprint figures and tasks', () 
   ]);
   assert.equal(m.sprints[1].status, 'error');
   assert.equal(kpiMemberReport(v, 'm:nobody'), null);
+});
+
+test('kpiMemberReport carries each sprint lockedAt through', () => {
+  const locked = '2026-09-13T01:00:00.000Z';
+  const r = report();
+  r.sprints[0] = Object.assign({}, r.sprints[0], { lockedAt: locked });
+  r.sprints[1] = Object.assign({}, r.sprints[1], { lockedAt: null });
+  const m = kpiMemberReport(buildKpiView(r, members, mapping), 'm:m1');
+  assert.deepEqual(m.sprints.map((s) => [s.name, s.lockedAt]), [['Sprint 1', locked], ['Sprint 2', null]]);
+});
+
+test('kpiSprintBadge marks locked sprints and says later JIRA edits are ignored', (t) => {
+  // esc is a browser global from app-core.js; stand in for it outside the page.
+  const hadEsc = 'esc' in globalThis;
+  if (!hadEsc) globalThis.esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  t.after(() => { if (!hadEsc) delete globalThis.esc; });
+  const html = kpiSprintBadge({ status: 'ok', lockedAt: '2026-10-13T10:20:00.000Z' });
+  assert.match(html, /kpi-locked/);
+  assert.match(html, /SP locked 2026-10-13/);
+  assert.match(html, /later JIRA edits .*are not picked up/i);
+  assert.equal(kpiSprintBadge({ status: 'ok', lockedAt: null }), '', 'unlocked ok sprint → no badge');
+  assert.match(kpiSprintBadge({ status: 'error', lockedAt: null, error: 'x' }), /stale/, 'error badge unchanged');
+});
+
+test('the SP tip explains that closed sprints keep their story points', () => {
+  assert.match(KPI_TIPS.points, /closed sprint/i);
+  assert.match(KPI_TIPS.points, /not picked up/i);
 });
 
 test('kpiMemberReport keeps sprints where the member only has excluded tasks', () => {

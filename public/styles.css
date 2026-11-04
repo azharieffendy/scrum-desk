@@ -873,6 +873,7 @@ code, pre, kbd, samp { font-family: var(--mono); }
 .rbadge.kpi-open      { background: var(--status-progress-bg); color: var(--status-progress-ink); }
 .rbadge.kpi-excluded  { background: var(--status-new-bg);      color: var(--status-new-ink); }
 .rbadge.kpi-stale     { background: var(--att-noshow-bg);      color: var(--att-noshow); }
+.rbadge.kpi-locked    { background: var(--status-new-bg);      color: var(--status-new-ink); cursor: help; }
 .rtable td.kpi-carryover { color: var(--att-late); }
 .kpi-table .kpi-row { cursor: pointer; }
 .kpi-table .kpi-row:hover td { background: var(--hover); }
