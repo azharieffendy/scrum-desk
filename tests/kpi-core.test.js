@@ -133,6 +133,70 @@ test('bounce-back: Untested then sent back inside the sprint is still done', () 
   assert.equal(r.outcome, 'done');
 });
 
+// ---------- mis-click: delivery undone within the grace window ----------
+
+test('mis-click: To Do → Done → In Progress a minute later is not delivered (SSB-102)', () => {
+  const issue = raw('M-1', { sprints: '103', events: [
+    ['2026-09-30T10:37', 'status', 'Done'],
+    ['2026-09-30T10:38', 'status', 'In Progress'],
+  ] });
+  assert.equal(kpi.firstDelivery(tl(issue), CATEGORIES, ctx.rules), null);
+  assert.equal(classify(issue, S3).outcome, 'open');
+});
+
+test('mis-click in a closed sprint, never delivered: carry-over', () => {
+  const r = classify(raw('M-2', { sprints: '101', events: [
+    ['2026-09-05T10:00', 'status', 'Done'],
+    ['2026-09-05T10:02', 'status', 'To Do'],
+  ] }), S1);
+  assert.equal(r.outcome, 'carryover');
+});
+
+test('mis-click then a real delivery later: done at the later moment', () => {
+  const r = classify(raw('M-3', { sprints: '101', events: [
+    ['2026-09-05T10:00', 'status', 'Done'],
+    ['2026-09-05T10:01', 'status', 'In Progress'],
+    ['2026-09-09T15:00', 'status', 'Untested'],
+  ] }), S1);
+  assert.equal(r.outcome, 'done');
+  assert.equal(r.at, '2026-09-09T08:00:00.000Z');
+});
+
+test('mis-click: In Progress → Untested → straight back to In Progress is not delivered', () => {
+  const r = classify(raw('M-4', { sprints: '101', events: [
+    ['2026-09-03T10:00', 'status', 'In Progress'],
+    ['2026-09-05T10:00', 'status', 'Untested'],
+    ['2026-09-05T10:01', 'status', 'In Progress'],
+  ] }), S1);
+  assert.equal(r.outcome, 'carryover');
+});
+
+test('sent back after the grace window still counts as done', () => {
+  const r = classify(raw('M-5', { sprints: '101', events: [
+    ['2026-09-05T10:00', 'status', 'Done'],
+    ['2026-09-05T10:11', 'status', 'In Progress'],
+  ] }), S1);
+  assert.equal(r.outcome, 'done');
+});
+
+test('QA picks it up right away (Untested → In Testing) still counts as done', () => {
+  const r = classify(raw('M-6', { sprints: '101', events: [
+    ['2026-09-05T10:00', 'status', 'Untested'],
+    ['2026-09-05T10:02', 'status', 'In Testing'],
+  ] }), S1);
+  assert.equal(r.outcome, 'done');
+  assert.equal(r.at, '2026-09-05T03:00:00.000Z');
+});
+
+test('moving on to another delivery status right away still counts at the first one', () => {
+  const r = classify(raw('M-7', { sprints: '101', events: [
+    ['2026-09-05T10:00', 'status', 'Untested'],
+    ['2026-09-05T10:01', 'status', 'Done'],
+  ] }), S1);
+  assert.equal(r.outcome, 'done');
+  assert.equal(r.at, '2026-09-05T03:00:00.000Z');
+});
+
 // ---------- carry-over ----------
 
 test('delivered after the sprint closed (not moved on) is carry-over', () => {

@@ -432,7 +432,9 @@ How tasks are counted:
 - **Delivered** — the task reached a *Done*-category status by default (configurable in
   Settings → KPI rules → Counting rules) between the sprint's
   start and close. The path doesn't matter, and what QA does afterwards (testing,
-  sending it back) doesn't change it: it is a developer delivery KPI.
+  sending it back) doesn't change it: it is a developer delivery KPI. One exception: a
+  move that is undone within 10 minutes, back to where the task came from or to an
+  earlier stage (e.g. Done → In Progress), is treated as a mis-click and doesn't count.
 - **Carry-over** — the task was still in the sprint when it closed and never reached
   a delivery status inside it. A task that slips twice counts as carry-over in both sprints.
 - **Counted once** — a task counts as delivered only in the first sprint it was
